@@ -1,0 +1,39 @@
+# Dedicated Redis instance for the relay, so the box's existing redis-server
+# (if any) keeps its own config, its own data and its own uptime.
+#
+# Install: /etc/systemd/system/redis-relay.service
+
+[Unit]
+Description=Redis for the relay signaling server (port 6380)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=notify
+User=redis
+Group=redis
+ExecStart=/usr/bin/redis-server /etc/redis/relay-redis.conf --supervised systemd
+ExecStop=/bin/kill -s TERM $MAINPID
+Restart=always
+RestartSec=3
+
+# systemd creates and chowns these; without them the instance cannot write
+# its own pidfile or AOF, and the failure looks like a permissions bug rather
+# than a missing directory.
+RuntimeDirectory=redis-relay
+RuntimeDirectoryMode=0755
+StateDirectory=redis-relay
+StateDirectoryMode=0750
+
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/redis-relay /var/log/redis /run/redis-relay
+ProtectHome=true
+PrivateTmp=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+
+[Install]
+WantedBy=multi-user.target

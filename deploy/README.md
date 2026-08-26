@@ -3,6 +3,18 @@
 A fresh Ubuntu 22.04/24.04 box to a working relay in about 10 minutes of
 hands-on time (package installs and `certbot` run in the background).
 
+> ### Does this host already serve a website?
+>
+> **Then do not use this runbook.** It assumes the box is dedicated to the
+> relay: `install.sh` takes over the apex domain, overwrites
+> `/etc/redis/redis.conf` (which adds a password every existing Redis client
+> will immediately fail on) and deletes `sites-enabled/default`.
+>
+> Use **[`install-coexist.sh`](install-coexist.sh)** instead — same stack, but
+> on the `relay.hatamidev.com` subdomain with its own Redis on port 6380, and
+> it refuses to modify anything that was already there. Step-by-step guide:
+> [`README-fa.md`](README-fa.md) (Persian).
+
 ## 0. Before you start
 
 You need, on the machine you'll SSH from:
