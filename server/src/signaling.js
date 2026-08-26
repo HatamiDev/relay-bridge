@@ -87,6 +87,44 @@ function isValidEnvelope(envelope) {
   return true;
 }
 
+/**
+ * Make Socket.IO rooms work across processes.
+ *
+ * Delivery below is `nsp.to(room).emit(...)`. Socket.IO's default adapter keeps
+ * its room table in the process's own memory, so with more than one relay
+ * process — a load balancer, or LiteSpeed/Passenger spawning several workers
+ * for one app — a gateway attached to worker A simply cannot reach a receiver
+ * attached to worker B. The pairing succeeds, both sides look healthy, and
+ * every message silently goes nowhere.
+ *
+ * The Redis adapter fixes that by publishing emits over pub/sub so any worker
+ * holding the target socket delivers it. It is wired only when REDIS_URL is
+ * set — the single-process memory-store deployment has nothing to coordinate.
+ *
+ * Failure here is deliberately fatal rather than degraded: a relay that has
+ * been told it is multi-process, but is silently routing to one process only,
+ * is worse than one that refuses to start.
+ */
+async function attachRedisAdapter(io) {
+  if (!config.redis.url) return false;
+
+  const { createAdapter } = require('@socket.io/redis-adapter');
+  const { createClient } = require('redis');
+
+  // The adapter needs its own pair of connections: a client in subscriber mode
+  // cannot issue ordinary commands, so it can never be the store's client.
+  const pub = createClient({ url: config.redis.url });
+  const sub = pub.duplicate();
+
+  pub.on('error', (err) => logger.error({ err: err.message }, 'redis adapter pub error'));
+  sub.on('error', (err) => logger.error({ err: err.message }, 'redis adapter sub error'));
+
+  await Promise.all([pub.connect(), sub.connect()]);
+  io.adapter(createAdapter(pub, sub));
+  logger.info('socket.io redis adapter attached — cross-process delivery enabled');
+  return true;
+}
+
 function attachSignaling(httpServer) {
   const io = new Server(httpServer, {
     path: '/socket.io',
@@ -97,6 +135,14 @@ function attachSignaling(httpServer) {
     maxHttpBufferSize: config.relay.maxEnvelopeBytes + 4096,
     transports: ['websocket', 'polling'],
     cors: { origin: false },
+  });
+
+  // Fire-and-forget: sockets that connect during the few milliseconds before
+  // the adapter attaches are re-registered by it on attach, so there is no gap
+  // to guard against.
+  attachRedisAdapter(io).catch((err) => {
+    logger.error({ err: err.message }, 'redis adapter failed to attach');
+    throw err;
   });
 
   const nsp = io.of('/relay');
