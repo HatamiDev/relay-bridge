@@ -372,7 +372,7 @@ process.on('uncaughtException', (err) => {
 function sanitizeText(value, max) {
   if (typeof value !== 'string') return '';
   // eslint-disable-next-line no-control-regex
-  return value.slice(0, max).replace(/[ --]/g, '');
+  return value.slice(0, max).replace(/[\u0000-\u001f\u007f-\u009f]/g, '');
 }
 
 function sanitizeId(value) {

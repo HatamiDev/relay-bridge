@@ -357,7 +357,7 @@ function clampInt(value, min, max) {
 }
 
 function text(value, max) {
-  return typeof value === 'string' ? value.slice(0, max).replace(/[ --]/g, '') : '';
+  return typeof value === 'string' ? value.slice(0, max).replace(/[\u0000-\u001f\u007f-\u009f]/g, '') : '';
 }
 
 module.exports = { attachSignaling, isValidEnvelope };
