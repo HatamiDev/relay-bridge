@@ -114,6 +114,9 @@ const config = Object.freeze({
   }),
 
   logLevel: optional('LOG_LEVEL', isProd ? 'info' : 'debug'),
+  // Absolute path, or empty for stdout. Needed on any host that discards
+  // stdout — LiteSpeed/Passenger keeps stderr only.
+  logFile: optional('LOG_FILE', ''),
 });
 
 // ── Boot-time sanity checks ───────────────────────────────────────────────────
