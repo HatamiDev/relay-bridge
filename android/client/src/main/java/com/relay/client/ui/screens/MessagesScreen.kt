@@ -12,6 +12,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.BatteryStd
 import androidx.compose.material.icons.rounded.Bolt
 import androidx.compose.material.icons.rounded.DoneAll
+import androidx.compose.material.icons.rounded.Person
 import androidx.compose.material.icons.rounded.SignalCellularAlt
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -245,19 +246,30 @@ private fun Avatar(
             .background(colors.auroraTeal),   // Extended Primary 500 · #3E3180
         contentAlignment = Alignment.Center,
     ) {
-        if (photo != null) {
-            Image(
+        when {
+            photo != null -> Image(
                 bitmap = photo,
                 contentDescription = null,
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.matchParentSize().clip(CircleShape),
             )
-        } else {
-            Text(
+
+            initials.isNotEmpty() -> Text(
                 initials,
                 color = colors.textPrimary,
                 fontSize = 20.sp,
                 fontWeight = FontWeight.Bold,
+            )
+
+            // An unsaved number has no initials to show. A person glyph says
+            // "someone we don't have a name for"; a letter taken from the
+            // digits would be noise, and every number would produce the same
+            // one anyway.
+            else -> Icon(
+                Icons.Rounded.Person,
+                contentDescription = null,
+                tint = colors.textPrimary.copy(alpha = 0.72f),
+                modifier = Modifier.size(26.dp),
             )
         }
     }

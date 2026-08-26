@@ -450,6 +450,35 @@ class RelayRepository private constructor(context: Context) {
     fun messagesFor(threadId: String): List<SmsMessage> =
         messages[threadId]?.toList() ?: emptyList()
 
+    /**
+     * Remove messages from this device only.
+     *
+     * Deliberately local. The gateway's SMS provider is the authoritative
+     * store — `sms:sync` rebuilds history from it — so there is no "delete
+     * everywhere" to offer without also deleting from the SIM handset's own
+     * Messages app, which is a destructive, irreversible action on a phone the
+     * user may not be holding. Local removal is honest about its scope, and a
+     * later sync can bring the message back, which is the recoverable failure
+     * mode rather than the permanent one.
+     */
+    @Synchronized
+    fun deleteMessages(threadId: String, ids: Set<String>) {
+        if (ids.isEmpty()) return
+        val bucket = messages[threadId] ?: return
+        if (!bucket.removeAll { it.id in ids }) return
+        if (bucket.isEmpty()) messages.remove(threadId)
+        scope.launch { cache.save(allMessages()) }
+        rebuildThreads()
+    }
+
+    /** Drop an entire conversation from this device. */
+    @Synchronized
+    fun deleteThread(threadId: String) {
+        if (messages.remove(threadId) == null) return
+        scope.launch { cache.save(allMessages()) }
+        rebuildThreads()
+    }
+
     @Synchronized
     private fun allMessages(): List<SmsMessage> = messages.values.flatten()
 

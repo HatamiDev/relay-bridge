@@ -30,6 +30,15 @@ import com.relay.client.ui.components.CircleIconButton
 import com.relay.client.ui.components.DockSpacer
 import com.relay.client.ui.components.GlassSurface
 import com.relay.client.ui.components.formatRelative
+import androidx.compose.foundation.layout.Box
+import androidx.compose.material.icons.rounded.Dialpad
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
+import com.relay.client.ui.components.Dialpad
 import com.relay.client.ui.theme.Glass
 
 /**
@@ -40,6 +49,7 @@ import com.relay.client.ui.theme.Glass
  * took on the gateway handset directly, and presenting those as "your calls" on
  * a device that never rang would be misleading.
  */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CallLogScreen(repository: RelayRepository, modifier: Modifier = Modifier) {
     val colors = Glass.colors
@@ -48,8 +58,26 @@ fun CallLogScreen(repository: RelayRepository, modifier: Modifier = Modifier) {
 
     val entries by CallLogStore.entries.collectAsState()
 
+    // The keypad is a sheet over the history rather than a fifth tab. Dialling
+    // an unsaved number is a burst activity — open, type, call, done — and it
+    // belongs on top of the list you just failed to find the number in, not in
+    // a destination you have to navigate away from.
+    var dialpadOpen by rememberSaveable { mutableStateOf(false) }
+    var dialled by rememberSaveable { mutableStateOf("") }
+
+    fun place(number: String) {
+        val target = number.trim()
+        if (target.isEmpty()) return
+        val callId = repository.placeCall(target)
+        context.startActivity(
+            CallActivity.outgoingIntent(context, callId, target, target),
+        )
+    }
+
+    Box(modifier.fillMaxSize()) {
+
     LazyColumn(
-        modifier = modifier.fillMaxSize(),
+        modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(top = 56.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
@@ -101,6 +129,42 @@ fun CallLogScreen(repository: RelayRepository, modifier: Modifier = Modifier) {
 
         // The dock floats over the list, so the last row needs somewhere to go.
         item(key = "dock-gap") { DockSpacer() }
+    }
+
+        // ── Keypad FAB ───────────────────────────────────────────────────────
+        FloatingActionButton(
+            onClick = { dialpadOpen = true },
+            containerColor = colors.accent,
+            contentColor = colors.textOnLight,
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .padding(end = 20.dp, bottom = dimens.dockHeight + 24.dp),
+        ) {
+            Icon(Icons.Rounded.Dialpad, contentDescription = "Open the keypad")
+        }
+
+        if (dialpadOpen) {
+            ModalBottomSheet(
+                onDismissRequest = { dialpadOpen = false },
+                containerColor = colors.canvasRaised,
+                contentColor = colors.textPrimary,
+            ) {
+                Dialpad(
+                    number = dialled,
+                    onDigit = { dialled += it },
+                    onBackspace = { dialled = dialled.dropLast(1) },
+                    onClear = { dialled = "" },
+                    onCall = {
+                        place(dialled)
+                        dialpadOpen = false
+                        // Cleared on success so the next open starts fresh
+                        // rather than re-offering a number already dialled.
+                        dialled = ""
+                    },
+                    modifier = Modifier.padding(bottom = 32.dp),
+                )
+            }
+        }
     }
 }
 

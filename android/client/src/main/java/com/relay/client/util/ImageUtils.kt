@@ -35,13 +35,26 @@ fun decodeBase64Bitmap(base64: String?): Bitmap? {
 fun decodeBase64Image(base64: String?): ImageBitmap? =
     decodeBase64Bitmap(base64)?.asImageBitmap()
 
-/** Two-letter initials for avatar fallbacks. */
+/**
+ * Two-letter initials for avatar fallbacks, or `""` when there is no name.
+ *
+ * Only letters count. The old version took the first character of each word
+ * whatever it was, so an unsaved contact — which on an SMS relay is most of
+ * them — got the first character of its phone number. Every one of those
+ * numbers starts with the country prefix, so the list rendered a column of
+ * identical "+" circles that told the user nothing and read as an
+ * "add contact" button rather than as a person.
+ *
+ * Returning empty rather than "?" lets the caller draw a person glyph, which
+ * is honest about there being no name, where "?" suggests something went
+ * wrong.
+ */
 fun String.initials(): String = trim()
-    .split(' ', '-', '_')
+    .split(' ', '-', '_', '.')
     .filter { it.isNotBlank() }
+    .mapNotNull { word -> word.firstOrNull { it.isLetter() } }
     .take(2)
-    .joinToString("") { it.first().uppercase() }
-    .ifEmpty { "?" }
+    .joinToString("") { it.uppercase() }
 
 /** Mask all but the last four digits — used in privacy-sensitive logs. */
 fun String.maskNumber(): String =

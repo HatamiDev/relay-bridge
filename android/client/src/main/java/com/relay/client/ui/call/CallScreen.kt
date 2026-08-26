@@ -15,12 +15,14 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Person
 import androidx.compose.material.icons.rounded.Call
 import androidx.compose.material.icons.rounded.CallEnd
 import androidx.compose.material.icons.rounded.Dialpad
 import androidx.compose.material.icons.rounded.Mic
 import androidx.compose.material.icons.rounded.MicOff
 import androidx.compose.material.icons.rounded.VolumeUp
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -300,12 +302,24 @@ private fun CallAvatar(
                     modifier = Modifier.matchParentSize().clip(shape),
                 )
             } else {
-                Text(
-                    name.initials(),
-                    color = colors.textPrimary,
-                    fontSize = 48.sp,
-                    fontWeight = FontWeight.Bold,
-                )
+                // initials() is empty for an unsaved number — a person glyph
+                // then, rather than a blank circle.
+                val letters = name.initials()
+                if (letters.isNotEmpty()) {
+                    Text(
+                        letters,
+                        color = colors.textPrimary,
+                        fontSize = 48.sp,
+                        fontWeight = FontWeight.Bold,
+                    )
+                } else {
+                    Icon(
+                        Icons.Rounded.Person,
+                        contentDescription = null,
+                        tint = colors.textPrimary.copy(alpha = 0.72f),
+                        modifier = Modifier.size(64.dp),
+                    )
+                }
             }
         }
     }

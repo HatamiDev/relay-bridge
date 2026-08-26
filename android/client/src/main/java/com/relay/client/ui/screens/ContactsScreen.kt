@@ -9,6 +9,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Person
 import androidx.compose.material.icons.rounded.Call
 import androidx.compose.material.icons.rounded.Message
 import androidx.compose.material.icons.rounded.Search
@@ -196,12 +197,22 @@ private fun ContactRow(
                         modifier = Modifier.matchParentSize().clip(shape),
                     )
                 } else {
-                    Text(
-                        contact.name.initials(),
-                        color = colors.textSecondary,
-                        fontSize = 15.sp,
-                        fontWeight = FontWeight.SemiBold,
-                    )
+                    val letters = contact.name.initials()
+                    if (letters.isNotEmpty()) {
+                        Text(
+                            letters,
+                            color = colors.textPrimary,
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.Bold,
+                        )
+                    } else {
+                        Icon(
+                            Icons.Rounded.Person,
+                            contentDescription = null,
+                            tint = colors.textPrimary.copy(alpha = 0.72f),
+                            modifier = Modifier.size(22.dp),
+                        )
+                    }
                 }
             }
 

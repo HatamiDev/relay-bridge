@@ -35,6 +35,13 @@ import com.relay.client.ui.components.GlassSurface
 import com.relay.client.ui.components.MessageBubble
 import com.relay.client.ui.components.VoiceCapsule
 import com.relay.client.ui.theme.AuroraVariant
+import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.DeleteOutline
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.TextButton
 import com.relay.client.ui.theme.Glass
 import com.relay.core.model.SmsMessage
 import kotlinx.coroutines.delay
@@ -50,6 +57,7 @@ import kotlinx.coroutines.delay
  * header and a quiet near-black under the message list, which is the inverse of
  * the feed. A bright gradient beneath a wall of text is exhausting to read.
  */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun ThreadScreen(
     repository: RelayRepository,
@@ -72,6 +80,25 @@ fun ThreadScreen(
     var draft by rememberSaveable { mutableStateOf("") }
     val listState = rememberLazyListState()
 
+    // Long-press selection, the standard messaging idiom. Kept as a plain id
+    // set rather than a "delete mode" flag: emptying the set *is* leaving the
+    // mode, so the two can never disagree about whether selection is active.
+    var selected by rememberSaveable(
+        saver = androidx.compose.runtime.saveable.listSaver(
+            save = { it.toList() },
+            restore = { it.toMutableSet() },
+        ),
+    ) { mutableStateOf(mutableSetOf<String>()) }
+    var confirmDelete by rememberSaveable { mutableStateOf(false) }
+
+    fun toggle(id: String) {
+        selected = selected.toMutableSet().apply { if (!add(id)) remove(id) }
+    }
+
+    // Back leaves selection before it leaves the thread — otherwise a user
+    // trying to cancel a selection is thrown out of the conversation.
+    BackHandler(enabled = selected.isNotEmpty()) { selected = mutableSetOf() }
+
     // Voice playback state for capsules in this thread.
     var playingId by remember { mutableStateOf<String?>(null) }
     var playbackMs by remember { mutableLongStateOf(0L) }
@@ -90,10 +117,79 @@ fun ThreadScreen(
         playbackMs = 0L
     }
 
+    if (confirmDelete) {
+        val n = selected.size
+        AlertDialog(
+            onDismissRequest = { confirmDelete = false },
+            containerColor = colors.glassDarkStrong,
+            titleContentColor = colors.textPrimary,
+            textContentColor = colors.textSecondary,
+            title = { Text(if (n == 1) "Delete message?" else "Delete $n messages?") },
+            // Says plainly what the scope is. "Delete" with no qualifier would
+            // imply it is gone from the SIM handset too, which it is not.
+            text = {
+                Text(
+                    "Removed from this device only. The sender's phone keeps its " +
+                        "own copy, and a later sync can bring these back.",
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    repository.deleteMessages(threadId, selected.toSet())
+                    messages = repository.messagesFor(threadId)
+                    selected = mutableSetOf()
+                    confirmDelete = false
+                }) {
+                    Text("Delete", color = colors.danger)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmDelete = false }) {
+                    Text("Cancel", color = colors.textSecondary)
+                }
+            },
+        )
+    }
+
     AuroraBackground(modifier.fillMaxSize(), variant = AuroraVariant.Chat) {
         Column(Modifier.fillMaxSize()) {
 
+            // ── Selection bar ─────────────────────────────────────────────────
+            // Replaces the header outright rather than stacking above it: two
+            // bars would push the conversation down and leave two competing
+            // back affordances on screen at once.
+            if (selected.isNotEmpty()) {
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .background(colors.glassDarkStrong)
+                        .statusBarsPadding()
+                        .padding(horizontal = 8.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    CircleIconButton(
+                        icon = Icons.Rounded.Close,
+                        contentDescription = "Cancel selection",
+                        onClick = { selected = mutableSetOf() },
+                    )
+                    Spacer(Modifier.width(12.dp))
+                    Text(
+                        "${selected.size} selected",
+                        color = colors.textPrimary,
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Medium,
+                        modifier = Modifier.weight(1f),
+                    )
+                    CircleIconButton(
+                        icon = Icons.Rounded.DeleteOutline,
+                        contentDescription = "Delete selected",
+                        onClick = { confirmDelete = true },
+                    )
+                }
+            }
+
             // ── Header ────────────────────────────────────────────────────────
+            if (selected.isEmpty())
             GlassSurface(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(bottomStart = 26.dp, bottomEnd = 26.dp),
@@ -189,6 +285,27 @@ fun ThreadScreen(
                             )
                         }
                     } else {
+                        Box(
+                            Modifier
+                                .fillMaxWidth()
+                                .background(
+                                    if (message.id in selected) {
+                                        colors.accent.copy(alpha = 0.22f)
+                                    } else {
+                                        Color.Transparent
+                                    },
+                                )
+                                .combinedClickable(
+                                    onClick = {
+                                        // Once a selection exists, a plain tap
+                                        // extends it. Anything else means the
+                                        // first tap after a long-press would
+                                        // silently do nothing.
+                                        if (selected.isNotEmpty()) toggle(message.id)
+                                    },
+                                    onLongClick = { toggle(message.id) },
+                                ),
+                        ) {
                         MessageBubble(
                             text = message.body,
                             timestamp = message.ts,
@@ -204,6 +321,7 @@ fun ThreadScreen(
                                 ""
                             },
                         )
+                        }
                     }
                 }
             }
