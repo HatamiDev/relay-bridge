@@ -42,6 +42,8 @@ import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.DeleteOutline
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.TextButton
+import androidx.compose.foundation.background
+import androidx.compose.ui.graphics.Color
 import com.relay.client.ui.theme.Glass
 import com.relay.core.model.SmsMessage
 import kotlinx.coroutines.delay
@@ -83,21 +85,24 @@ fun ThreadScreen(
     // Long-press selection, the standard messaging idiom. Kept as a plain id
     // set rather than a "delete mode" flag: emptying the set *is* leaving the
     // mode, so the two can never disagree about whether selection is active.
-    var selected by rememberSaveable(
-        saver = androidx.compose.runtime.saveable.listSaver(
-            save = { it.toList() },
-            restore = { it.toMutableSet() },
-        ),
-    ) { mutableStateOf(mutableSetOf<String>()) }
+    // An immutable Set in plain `remember`, not rememberSaveable.
+    //
+    // Saveable needs a custom Saver for a Set and buys nothing here: a
+    // selection is a transient gesture, and restoring one after process death
+    // would put the user back in delete-mode with no memory of choosing it.
+    // Immutable rather than MutableSet so every change is a new instance and
+    // Compose actually sees it — mutating a set in place leaves the reference
+    // equal and the recomposition never happens.
+    var selected by remember { mutableStateOf(emptySet<String>()) }
     var confirmDelete by rememberSaveable { mutableStateOf(false) }
 
     fun toggle(id: String) {
-        selected = selected.toMutableSet().apply { if (!add(id)) remove(id) }
+        selected = if (id in selected) selected - id else selected + id
     }
 
     // Back leaves selection before it leaves the thread — otherwise a user
     // trying to cancel a selection is thrown out of the conversation.
-    BackHandler(enabled = selected.isNotEmpty()) { selected = mutableSetOf() }
+    BackHandler(enabled = selected.isNotEmpty()) { selected = emptySet() }
 
     // Voice playback state for capsules in this thread.
     var playingId by remember { mutableStateOf<String?>(null) }
@@ -135,9 +140,9 @@ fun ThreadScreen(
             },
             confirmButton = {
                 TextButton(onClick = {
-                    repository.deleteMessages(threadId, selected.toSet())
+                    repository.deleteMessages(threadId, selected)
                     messages = repository.messagesFor(threadId)
-                    selected = mutableSetOf()
+                    selected = emptySet()
                     confirmDelete = false
                 }) {
                     Text("Delete", color = colors.danger)
@@ -170,7 +175,7 @@ fun ThreadScreen(
                     CircleIconButton(
                         icon = Icons.Rounded.Close,
                         contentDescription = "Cancel selection",
-                        onClick = { selected = mutableSetOf() },
+                        onClick = { selected = emptySet() },
                     )
                     Spacer(Modifier.width(12.dp))
                     Text(
