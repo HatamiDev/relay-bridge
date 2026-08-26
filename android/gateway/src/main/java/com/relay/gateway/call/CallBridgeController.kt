@@ -64,6 +64,20 @@ class CallBridgeController(
     /** The receiver that won the answer race for [callId]. Empty until answered. */
     private var answeringDeviceId: String = ""
 
+    /**
+     * Set by [placeCall], consumed by [onTelecomCallAdded].
+     *
+     * Telecom gives no way to correlate the call it surfaces with the
+     * `placeCall` that caused it, so the id and owner are held here across
+     * that gap. Cleared as soon as they are adopted, and again on teardown, so
+     * a later inbound call can never inherit them.
+     */
+    private var pendingOutgoingCallId: String = ""
+    private var pendingOutgoingDeviceId: String = ""
+
+    /** Guards [announceRinging] against announcing the same call twice. */
+    private var announcedRinging = false
+
     /** ICE candidates that arrive before the remote description is applied. */
     private val pendingRemoteIce = ConcurrentLinkedQueue<RtcIce>()
     private var remoteDescriptionSet = false
@@ -100,29 +114,32 @@ class CallBridgeController(
         }
 
         telecomCall = call
-        callId = UUID.randomUUID().toString()
-        answeringDeviceId = ""
+
+        // Adopt the id the receiver already minted, if this is the call it just
+        // asked us to place.
+        //
+        // Unconditionally generating a fresh UUID here broke every outgoing
+        // call: the receiver kept its own id, the gateway switched to a new
+        // one, and from then on the two disagreed about what the call was
+        // called. `hangup()` compares ids and silently returns on a mismatch,
+        // so the receiver could end its own screen while the cellular call
+        // stayed up. DTMF, mute and every state update were dropped for the
+        // same reason, which is why an outgoing call never left "CALLING…".
+        if (pendingOutgoingCallId.isNotEmpty()) {
+            callId = pendingOutgoingCallId
+            answeringDeviceId = pendingOutgoingDeviceId
+            pendingOutgoingCallId = ""
+            pendingOutgoingDeviceId = ""
+        } else {
+            callId = UUID.randomUUID().toString()
+            answeringDeviceId = ""
+        }
+        announcedRinging = false
         remoteDescriptionSet = false
         pendingRemoteIce.clear()
 
         when (call.state) {
-            Call.STATE_RINGING -> {
-                state = CallState.RINGING
-                val number = handleOf(call)
-                // Broadcast: nobody has answered yet, so every receiver rings.
-                emit(
-                    Ev.CALL_INCOMING,
-                    json.encodeToString(
-                        CallIncoming(
-                            callId = callId,
-                            from = number,
-                            displayName = call.details?.callerDisplayName.orEmpty(),
-                        ),
-                    ),
-                    null,
-                )
-                pushState(CallState.RINGING)
-            }
+            Call.STATE_RINGING -> announceRinging(call)
             Call.STATE_DIALING, Call.STATE_CONNECTING -> {
                 state = CallState.DIALING
                 pushState(CallState.DIALING)
@@ -135,9 +152,43 @@ class CallBridgeController(
         onStateChanged()
     }
 
+    /**
+     * Tell every receiver a call is ringing. Safe to call more than once.
+     *
+     * Split out of [onTelecomCallAdded] because Telecom frequently hands us a
+     * call in STATE_NEW — and on Samsung also STATE_SIMULATED_RINGING — and
+     * only moves it to STATE_RINGING a moment later, through
+     * [onTelecomStateChanged]. `onCallAdded` never fires twice for one call, so
+     * announcing only from there meant that on the common path the gateway rang
+     * and the receiver was never told anything at all.
+     */
+    private fun announceRinging(call: Call) {
+        if (announcedRinging) return
+        announcedRinging = true
+
+        state = CallState.RINGING
+        val number = handleOf(call)
+        // Broadcast: nobody has answered yet, so every receiver rings.
+        emit(
+            Ev.CALL_INCOMING,
+            json.encodeToString(
+                CallIncoming(
+                    callId = callId,
+                    from = number,
+                    displayName = call.details?.callerDisplayName.orEmpty(),
+                ),
+            ),
+            null,
+        )
+        pushState(CallState.RINGING)
+    }
+
     fun onTelecomStateChanged(call: Call, newState: Int) {
         if (call !== telecomCall) return
         when (newState) {
+            // The branch that was missing. Without it, a call added in
+            // STATE_NEW never reached any receiver.
+            Call.STATE_RINGING -> announceRinging(call)
             Call.STATE_ACTIVE -> startBridge()
             Call.STATE_HOLDING -> { state = CallState.HELD; pushState(CallState.HELD) }
             Call.STATE_DISCONNECTED, Call.STATE_DISCONNECTING -> {
@@ -257,6 +308,12 @@ class CallBridgeController(
     fun placeCall(requestedCallId: String, destination: String, fromDeviceId: String) {
         callId = requestedCallId
         answeringDeviceId = fromDeviceId
+        // Stashed so that when Telecom surfaces this call through
+        // onTelecomCallAdded — which cannot tell an outgoing call it just
+        // placed from an unrelated inbound one — the receiver's id survives
+        // instead of being replaced by a fresh UUID.
+        pendingOutgoingCallId = requestedCallId
+        pendingOutgoingDeviceId = fromDeviceId
         state = CallState.DIALING
         pushState(CallState.DIALING)
 
@@ -349,6 +406,13 @@ class CallBridgeController(
 
                 override fun onError(message: String, cause: Throwable?) {
                     Log.e(TAG, "webrtc: $message", cause)
+                    // Relay it, don't just log it. An audio-capture failure is
+                    // the difference between a working call and a silent one,
+                    // and the receiver's screen otherwise shows a confident
+                    // "Speakerphone loopback" label while nothing is being
+                    // recorded at all. Surfacing the cause is what turns a
+                    // baffling silent call into a diagnosable one.
+                    pushState(state, cause = "audio_error: $message")
                 }
             },
         )
@@ -428,6 +492,9 @@ class CallBridgeController(
         state = CallState.IDLE
         callId = ""
         answeringDeviceId = ""
+        pendingOutgoingCallId = ""
+        pendingOutgoingDeviceId = ""
+        announcedRinging = false
         onStateChanged()
     }
 

@@ -397,12 +397,45 @@ class WebRtcEngine(
         savedSpeakerphone = audioManager.isSpeakerphoneOn
 
         runCatching {
-            audioManager.mode = AudioManager.MODE_IN_COMMUNICATION
             when (profile) {
-                AudioProfile.HANDSET -> setSpeakerphone(false)   // earpiece by default
+                AudioProfile.HANDSET -> {
+                    audioManager.mode = AudioManager.MODE_IN_COMMUNICATION
+                    setSpeakerphone(false)   // earpiece by default
+                }
+
                 AudioProfile.TELEPHONY_BRIDGE -> {
-                    // Loopback strategies need the speaker; privileged capture does not.
-                    setSpeakerphone(!activeCaptureSource.startsWith("VOICE_"))
+                    // Two bugs used to live in these three lines, and together
+                    // they silenced every bridged call.
+                    //
+                    // 1. The privileged test was `startsWith("VOICE_")`, which
+                    //    is also true of "VOICE_COMMUNICATION" — the loopback
+                    //    source, and the only one an unprivileged install can
+                    //    ever get. So on every real device the branch that
+                    //    turns the speaker ON was replaced by one that turned
+                    //    it OFF. Match the two privileged sources by name.
+                    //
+                    // 2. This method runs *after* CallAudioBridge.prepareRouting
+                    //    has set MODE_IN_CALL, and unconditionally overwrote it
+                    //    with MODE_IN_COMMUNICATION. For loopback the modem
+                    //    uplink only carries what the loudspeaker plays while
+                    //    the platform is in MODE_IN_CALL, so that overwrite
+                    //    broke the one path the audio has.
+                    //
+                    // With no privileged capture, the bridge is acoustic: the
+                    // far end is heard through the loudspeaker and re-captured,
+                    // and the receiver's voice is played out of that same
+                    // speaker for the modem's mic to pick up. That demands
+                    // speakerphone ON and MODE_IN_CALL — leave both alone.
+                    val privilegedCapture =
+                        activeCaptureSource == "VOICE_CALL" ||
+                            activeCaptureSource == "VOICE_DOWNLINK"
+
+                    if (privilegedCapture) {
+                        audioManager.mode = AudioManager.MODE_IN_COMMUNICATION
+                        setSpeakerphone(false)
+                    } else {
+                        setSpeakerphone(true)
+                    }
                 }
             }
         }

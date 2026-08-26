@@ -27,10 +27,13 @@ import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Call
+import androidx.compose.material.icons.rounded.ChatBubbleOutline
 import androidx.compose.material.icons.rounded.FavoriteBorder
 import androidx.compose.material.icons.rounded.Home
 import androidx.compose.material.icons.rounded.Person
 import androidx.compose.material.icons.rounded.Search
+import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -73,11 +76,21 @@ import com.relay.client.ui.theme.GlassTone
  * decorating.
  */
 
+/**
+ * The four destinations, named after what they actually contain.
+ *
+ * They used to be Home / Search / Activity / Profile, carried over from the
+ * social-app layout this design borrows from. That cost real usability: the
+ * contact list sat behind a heart icon labelled "Activity" and the call log
+ * behind a magnifying glass labelled "Search", so a user looking for their
+ * contacts had no reason to tap either. The icons now match the destination
+ * too — a phone for calls, a person for contacts.
+ */
 enum class DockTab(val label: String, val icon: ImageVector) {
-    Home("Home", Icons.Rounded.Home),
-    Search("Search", Icons.Rounded.Search),
-    Activity("Activity", Icons.Rounded.FavoriteBorder),
-    Profile("Profile", Icons.Rounded.Person),
+    Home("Messages", Icons.Rounded.ChatBubbleOutline),
+    Search("Calls", Icons.Rounded.Call),
+    Activity("Contacts", Icons.Rounded.Person),
+    Profile("Settings", Icons.Rounded.Settings),
 }
 
 @Composable
