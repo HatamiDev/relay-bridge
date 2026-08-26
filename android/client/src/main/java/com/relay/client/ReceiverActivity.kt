@@ -184,14 +184,18 @@ private fun RelayApp(initialThreadId: String?) {
                         )
                     }
 
+                    // Full-bleed and flush to the bottom edge, per the kit.
+                    // The horizontal inset the floating capsule used to need is
+                    // gone: an edge-to-edge bar has no rounded ends for an edge
+                    // tab to be clipped against, and its hairline top border
+                    // only reads as a separator if it spans the full width.
                     FloatingDock(
                         selected = tab,
                         onSelect = { tab = it },
                         badges = mapOf(DockTab.Home to unread),
                         modifier = Modifier
                             .align(Alignment.BottomCenter)
-                            .navigationBarsPadding()
-                            .padding(horizontal = 20.dp, vertical = 12.dp),
+                            .navigationBarsPadding(),
                     )
                 }
             }
