@@ -69,113 +69,52 @@ fun MessageBubble(
     state: SmsState,
     modifier: Modifier = Modifier,
     showTail: Boolean = true,
-    /** Base64 JPEG; when present it is pinned to the bubble's tail corner. */
+    /** Unused in the kit layout; kept so existing call sites still compile. */
     avatarB64: String = "",
     accentOutgoing: Boolean = false,
 ) {
     val colors = Glass.colors
-    val radius = Glass.dimens.bubbleRadius
-    val avatar = remember(avatarB64) { decodeBase64Image(avatarB64) }
 
-    val shape = RoundedCornerShape(
-        topStart = radius,
-        topEnd = radius,
-        bottomStart = if (!inbound || !showTail) radius else 7.dp,
-        bottomEnd = if (inbound || !showTail) radius else 7.dp,
-    )
+    // 12dp on all four corners, both directions. The kit draws no tail and no
+    // asymmetry — direction is carried by alignment and by fill colour alone,
+    // which is enough and stays legible when a run alternates rapidly.
+    val shape = RoundedCornerShape(Glass.dimens.bubbleRadius)
 
     Row(
         modifier = modifier.fillMaxWidth(),
         horizontalArrangement = if (inbound) Arrangement.Start else Arrangement.End,
-        verticalAlignment = Alignment.Bottom,
     ) {
-        if (inbound && showTail) {
-            TailAvatar(avatar, text)
-            Spacer(Modifier.width(7.dp))
-        } else if (inbound) {
-            // Keep the run visually aligned even where no avatar is drawn.
-            Spacer(Modifier.width(TAIL_AVATAR + 7.dp))
-        }
-
         Column(
             modifier = Modifier
-                .widthIn(max = 272.dp)
+                // 296dp = 360 − 16 gutter − 16 gutter − 32 opposite margin, so a
+                // long message always leaves a visible strip of background on
+                // the far side and the direction stays readable at a glance.
+                .widthIn(max = 296.dp)
                 .clip(shape)
-                .then(
-                    when {
-                        !inbound && accentOutgoing ->
-                            Modifier.background(colors.outgoingAccentBrush)
-                        inbound ->
-                            Modifier
-                                .background(colors.bubbleIncoming)
-                                .background(colors.sheenBrush)
-                                .border(1.dp, colors.glassBorderSoft, shape)
-                        else ->
-                            Modifier
-                                .background(colors.bubbleOutgoing)
-                                .background(colors.sheenBrush)
-                                .border(1.dp, colors.glassBorder, shape)
-                    },
-                )
-                .padding(horizontal = 14.dp, vertical = 10.dp),
+                .background(if (inbound) colors.bubbleIncoming else colors.bubbleOutgoing)
+                .padding(horizontal = 12.dp, vertical = 8.dp),
         ) {
             Text(
                 text = text,
-                color = if (!inbound && accentOutgoing) Color.White else colors.textPrimary,
-                fontSize = 15.sp,
-                lineHeight = 21.sp,
+                color = colors.textPrimary,
+                fontSize = 14.sp,
+                lineHeight = 19.6.sp,
             )
-            Spacer(Modifier.height(4.dp))
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(4.dp),
-                modifier = Modifier.align(Alignment.End),
+                modifier = Modifier.align(Alignment.End).padding(top = 4.dp),
             ) {
                 Text(
                     text = formatClock(timestamp),
-                    color = colors.textTertiary,
-                    fontSize = 10.5.sp,
+                    // White on the purple outgoing fill, grey on the neutral
+                    // incoming one — a single colour cannot clear contrast on
+                    // both.
+                    color = if (inbound) colors.textSecondary else colors.textPrimary,
+                    fontSize = 10.sp,
                 )
                 if (!inbound) DeliveryTick(state)
             }
-        }
-
-        if (!inbound && showTail) {
-            Spacer(Modifier.width(7.dp))
-            TailAvatar(avatar, "You")
-        } else if (!inbound) {
-            Spacer(Modifier.width(TAIL_AVATAR + 7.dp))
-        }
-    }
-}
-
-private val TAIL_AVATAR = 26.dp
-
-@Composable
-private fun TailAvatar(avatar: androidx.compose.ui.graphics.ImageBitmap?, fallback: String) {
-    val colors = Glass.colors
-    Box(
-        Modifier
-            .size(TAIL_AVATAR)
-            .clip(CircleShape)
-            .background(colors.canvasRaised)
-            .border(1.dp, colors.glassBorderSoft, CircleShape),
-        contentAlignment = Alignment.Center,
-    ) {
-        if (avatar != null) {
-            Image(
-                bitmap = avatar,
-                contentDescription = null,
-                contentScale = ContentScale.Crop,
-                modifier = Modifier.size(TAIL_AVATAR).clip(CircleShape),
-            )
-        } else {
-            Text(
-                fallback.trim().take(1).uppercase(),
-                color = colors.textTertiary,
-                fontSize = 10.sp,
-                fontWeight = FontWeight.SemiBold,
-            )
         }
     }
 }
@@ -196,25 +135,30 @@ private fun DeliveryTick(state: SmsState) {
         SmsState.SENT ->
             Triple(Icons.Rounded.Check, colors.textSecondary, "Sent to the network")
         SmsState.DELIVERED ->
-            Triple(Icons.Rounded.DoneAll, colors.accent, "Delivered")
+            Triple(Icons.Rounded.DoneAll, colors.messageSeen, "Delivered")
         SmsState.FAILED ->
             Triple(Icons.Rounded.ErrorOutline, colors.danger, "Failed")
     }
-    Icon(icon, contentDescription = description, tint = tint, modifier = Modifier.size(13.dp))
+    Icon(icon, contentDescription = description, tint = tint, modifier = Modifier.size(16.dp))
 }
 
-/** Sticky day separator between message groups. */
+/** Day separator: the kit's bordered chip, not a fully-rounded pill. */
 @Composable
 fun DayDivider(timestamp: Long, modifier: Modifier = Modifier) {
     val colors = Glass.colors
-    Box(modifier.fillMaxWidth().padding(vertical = 14.dp), contentAlignment = Alignment.Center) {
-        GlassSurface(shape = RoundedCornerShape(50)) {
+    Box(modifier.fillMaxWidth().padding(vertical = 12.dp), contentAlignment = Alignment.Center) {
+        Box(
+            Modifier
+                .clip(RoundedCornerShape(4.dp))
+                .background(colors.canvas)
+                .border(1.dp, colors.glassBorderSoft, RoundedCornerShape(4.dp))
+                .padding(horizontal = 8.dp, vertical = 4.dp),
+        ) {
             Text(
-                text = formatDay(timestamp),
-                color = colors.textSecondary,
-                fontSize = 11.sp,
+                formatDay(timestamp),
+                color = colors.textPrimary,
+                fontSize = 12.sp,
                 fontWeight = FontWeight.Medium,
-                modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp),
             )
         }
     }

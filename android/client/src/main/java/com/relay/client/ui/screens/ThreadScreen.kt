@@ -12,6 +12,7 @@ import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.automirrored.rounded.Send
 import androidx.compose.material.icons.rounded.Call
 import androidx.compose.material.icons.rounded.Mic
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -44,6 +45,15 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.TextButton
 import androidx.compose.foundation.background
 import androidx.compose.ui.graphics.Color
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material.icons.rounded.Person
+import androidx.compose.ui.layout.ContentScale
+import com.relay.client.util.decodeBase64Image
+import com.relay.client.util.initials
+import androidx.compose.foundation.border
+import androidx.compose.ui.draw.clip
 import com.relay.client.ui.theme.Glass
 import com.relay.core.model.SmsMessage
 import kotlinx.coroutines.delay
@@ -194,54 +204,83 @@ fun ThreadScreen(
             }
 
             // ── Header ────────────────────────────────────────────────────────
-            if (selected.isEmpty())
-            GlassSurface(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(bottomStart = 26.dp, bottomEnd = 26.dp),
-                strong = true,
-            ) {
-                Row(
-                    Modifier
-                        .statusBarsPadding()
-                        .padding(horizontal = 12.dp, vertical = 12.dp),
-                    verticalAlignment = Alignment.CenterVertically,
+            // Flat 64dp bar on Background1 with a hairline underneath — the
+            // kit's Base_Header. The old version was a rounded glass card with
+            // a 26dp bottom sweep, which on a flat palette just looked like the
+            // top of the screen had been cut off.
+            if (selected.isEmpty()) {
+                Column(
+                    Modifier.fillMaxWidth().background(colors.canvasRaised),
                 ) {
-                    CircleIconButton(
-                        icon = Icons.AutoMirrored.Rounded.ArrowBack,
-                        contentDescription = "Back",
-                        onClick = onBack,
-                    )
-                    Spacer(Modifier.width(10.dp))
-                    Column(Modifier.weight(1f)) {
-                        Text(
-                            thread?.displayName ?: threadId,
-                            color = colors.textPrimary,
-                            fontSize = 16.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
+                    Row(
+                        Modifier
+                            .statusBarsPadding()
+                            .fillMaxWidth()
+                            .height(64.dp)
+                            .padding(horizontal = 16.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        Icon(
+                            Icons.AutoMirrored.Rounded.ArrowBack,
+                            contentDescription = "Back",
+                            tint = colors.textPrimary,
+                            modifier = Modifier
+                                .size(24.dp)
+                                .clickable(onClick = onBack),
                         )
-                        Text(
-                            thread?.address ?: threadId,
-                            color = colors.textTertiary,
-                            fontSize = 11.5.sp,
+
+                        ThreadAvatar(
+                            photoB64 = thread?.photoB64.orEmpty(),
+                            name = thread?.displayName ?: threadId,
+                        )
+
+                        Column(Modifier.weight(1f)) {
+                            Text(
+                                thread?.displayName ?: threadId,
+                                color = colors.textPrimary,
+                                fontSize = 16.sp,
+                                fontWeight = FontWeight.Medium,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                            Text(
+                                // The kit shows presence here. On a relay the
+                                // useful fact is the number itself — the
+                                // conversation is often with an unsaved sender,
+                                // and presence belongs to the gateway, not to
+                                // the person on the other end of the SMS.
+                                thread?.address ?: threadId,
+                                color = colors.textSecondary,
+                                fontSize = 12.sp,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
+
+                        Icon(
+                            Icons.Rounded.Call,
+                            contentDescription = "Call",
+                            tint = colors.textPrimary,
+                            modifier = Modifier
+                                .size(24.dp)
+                                .clickable {
+                                    val number = thread?.address ?: threadId
+                                    val callId = repository.placeCall(number)
+                                    context.startActivity(
+                                        CallActivity.outgoingIntent(
+                                            context, callId, number,
+                                            thread?.displayName ?: number,
+                                        ),
+                                    )
+                                },
                         )
                     }
-                    CircleIconButton(
-                        icon = Icons.Rounded.Call,
-                        contentDescription = "Call",
-                        tint = colors.success,
-                        background = colors.success.copy(alpha = 0.16f),
-                        onClick = {
-                            val number = thread?.address ?: threadId
-                            val callId = repository.placeCall(number)
-                            context.startActivity(
-                                CallActivity.outgoingIntent(
-                                    context, callId, number,
-                                    thread?.displayName ?: number,
-                                ),
-                            )
-                        },
+                    Box(
+                        Modifier
+                            .fillMaxWidth()
+                            .height(1.dp)
+                            .background(colors.glassBorder),
                     )
                 }
             }
@@ -332,33 +371,43 @@ fun ThreadScreen(
             }
 
             // ── Composer ──────────────────────────────────────────────────────
-            GlassSurface(
-                modifier = Modifier
+            // A bordered 8dp card on Background1, inset 8dp from the edges —
+            // the kit's Base_Message Composer. The old one was a 28dp glass
+            // pill; against flat surfaces that reads as a floating search box
+            // rather than a text field you can type a paragraph into.
+            Box(
+                Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 12.dp)
-                    .padding(bottom = 10.dp)
                     .imePadding()
-                    .navigationBarsPadding(),
-                shape = RoundedCornerShape(28.dp),
-                strong = true,
+                    .navigationBarsPadding()
+                    .padding(horizontal = 8.dp, vertical = 8.dp),
             ) {
-                Row(
-                    Modifier.padding(horizontal = 8.dp, vertical = 8.dp),
-                    verticalAlignment = Alignment.Bottom,
+                Column(
+                    Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(colors.canvasRaised)
+                        .border(1.dp, colors.glassBorder, RoundedCornerShape(8.dp)),
                 ) {
+                    // Row 1 — the field, on its own line so a long draft grows
+                    // downward instead of squeezing the actions.
                     Box(
                         Modifier
-                            .weight(1f)
-                            .heightIn(min = 40.dp, max = 132.dp)
-                            .padding(horizontal = 10.dp, vertical = 9.dp),
+                            .fillMaxWidth()
+                            .heightIn(min = 41.dp, max = 132.dp)
+                            .padding(12.dp),
                     ) {
                         if (draft.isEmpty()) {
-                            Text("Message", color = colors.textTertiary, fontSize = 15.sp)
+                            Text(
+                                "Type your message...",
+                                color = colors.textTertiary,
+                                fontSize = 14.sp,
+                            )
                         }
                         BasicTextField(
                             value = draft,
                             onValueChange = { draft = it },
-                            textStyle = TextStyle(color = colors.textPrimary, fontSize = 15.sp),
+                            textStyle = TextStyle(color = colors.textPrimary, fontSize = 14.sp),
                             cursorBrush = SolidColor(colors.accent),
                             keyboardOptions = KeyboardOptions(
                                 capitalization = KeyboardCapitalization.Sentences,
@@ -368,21 +417,66 @@ fun ThreadScreen(
                         )
                     }
 
-                    // Send and record share one button because they are the same
-                    // intent — "commit this" — and the draft decides which.
-                    val canSend = draft.isNotBlank()
-                    CircleIconButton(
-                        icon = if (canSend) Icons.AutoMirrored.Rounded.Send else Icons.Rounded.Mic,
-                        contentDescription = if (canSend) "Send" else "Record voice note",
-                        tint = if (canSend) colors.textOnLight else colors.accent,
-                        background = if (canSend) colors.accent else colors.accentSoft,
-                        onClick = {
-                            if (canSend) {
-                                repository.sendSms(thread?.address ?: threadId, draft.trim())
-                                draft = ""
-                            }
-                        },
+                    Box(
+                        Modifier
+                            .fillMaxWidth()
+                            .height(1.dp)
+                            .background(colors.glassBorder),
                     )
+
+                    // Row 2 — actions.
+                    //
+                    // The kit shows five leading icons (attach, mic, emoji,
+                    // sticker, AI). Four of those have nothing behind them
+                    // here: this is an SMS relay, not a chat product, and a
+                    // control that does nothing is worse than no control. Only
+                    // the mic is real, and only because a voice note already
+                    // rides the relay.
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 12.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        val canSend = draft.isNotBlank()
+
+                        Icon(
+                            Icons.Rounded.Mic,
+                            contentDescription = "Record voice note",
+                            tint = colors.textTertiary,
+                            modifier = Modifier.size(24.dp),
+                        )
+
+                        Spacer(Modifier.weight(1f))
+
+                        // 32dp circle. Neutral grey until there is something to
+                        // send, primary once there is — the kit ships only the
+                        // idle fill, but a send button that looks identical
+                        // empty and full gives the user no signal at all.
+                        Box(
+                            Modifier
+                                .size(32.dp)
+                                .clip(CircleShape)
+                                .background(
+                                    if (canSend) colors.accent else colors.glassLightStrong,
+                                )
+                                .clickable(enabled = canSend) {
+                                    repository.sendSms(
+                                        thread?.address ?: threadId,
+                                        draft.trim(),
+                                    )
+                                    draft = ""
+                                },
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Icon(
+                                Icons.AutoMirrored.Rounded.Send,
+                                contentDescription = "Send",
+                                tint = colors.textPrimary,
+                                modifier = Modifier.size(18.dp),
+                            )
+                        }
+                    }
                 }
             }
         }
@@ -423,4 +517,43 @@ fun SmsMessage.decodeWaveform(): List<Float> {
         android.util.Base64.decode(encoded, android.util.Base64.URL_SAFE or android.util.Base64.NO_WRAP)
             .map { (it.toInt() and 0xFF) / 255f }
     }.getOrDefault(emptyList())
+}
+
+/** 40dp circular avatar for the thread header. */
+@Composable
+private fun ThreadAvatar(photoB64: String, name: String) {
+    val colors = Glass.colors
+    val photo = remember(photoB64) { decodeBase64Image(photoB64) }
+    val letters = name.initials()
+
+    Box(
+        Modifier
+            .size(40.dp)
+            .clip(CircleShape)
+            .background(colors.auroraTeal),
+        contentAlignment = Alignment.Center,
+    ) {
+        when {
+            photo != null -> Image(
+                bitmap = photo,
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.matchParentSize().clip(CircleShape),
+            )
+
+            letters.isNotEmpty() -> Text(
+                letters,
+                color = colors.textPrimary,
+                fontSize = 16.sp,
+                fontWeight = FontWeight.Bold,
+            )
+
+            else -> Icon(
+                Icons.Rounded.Person,
+                contentDescription = null,
+                tint = colors.textPrimary.copy(alpha = 0.72f),
+                modifier = Modifier.size(22.dp),
+            )
+        }
+    }
 }
