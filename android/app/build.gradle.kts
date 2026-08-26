@@ -25,6 +25,18 @@ android {
         versionCode = 1
         versionName = "1.0.0"
 
+        ndk {
+            // Both target handsets (Note 10+, S26 Ultra) are arm64-v8a, and
+            // every Android device shipped since 2019 is. libwebrtc carries a
+            // ~12 MB native library *per* architecture, so keeping armeabi-v7a,
+            // x86 and x86_64 would triple the download for no one — the APK
+            // goes from roughly 50 MB to roughly 17 MB by dropping them.
+            //
+            // The trade-off: this APK will not install on a 32-bit device or on
+            // an x86 emulator. Add "x86_64" here if you ever need the emulator.
+            abiFilters += "arm64-v8a"
+        }
+
         buildConfigField(
             "String",
             "RELAY_SERVER_URL",
