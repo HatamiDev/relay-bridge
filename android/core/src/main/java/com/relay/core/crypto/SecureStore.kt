@@ -10,6 +10,7 @@ import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
 import com.relay.core.model.DeviceRole
 import com.relay.core.model.PairedPeer
+import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.Json
 import java.security.KeyStore
 import javax.crypto.Cipher
@@ -135,7 +136,15 @@ class SecureStore(context: Context) {
     }
 
     private fun savePeers(list: List<PairedPeer>) {
-        prefs.edit().putString(KEY_PEERS, json.encodeToString(list)).apply()
+        // Explicit serializer rather than the reified `encodeToString(value)`.
+        // The reified form is an extension in the `kotlinx.serialization`
+        // package, so without that import the call silently resolves to the
+        // two-argument overload and fails to compile with a confusing
+        // "expected SerializationStrategy" message. Naming the serializer makes
+        // it unambiguous and survives anyone tidying imports later.
+        prefs.edit()
+            .putString(KEY_PEERS, json.encodeToString(ListSerializer(PairedPeer.serializer()), list))
+            .apply()
     }
 
     // ── Per-peer root keys ───────────────────────────────────────────────────

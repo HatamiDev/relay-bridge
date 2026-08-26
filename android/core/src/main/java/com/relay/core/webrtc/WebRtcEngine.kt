@@ -266,7 +266,9 @@ class WebRtcEngine(
                 else PeerConnection.IceTransportsType.ALL
             // Trickle ICE end-to-end; the signaling channel is already low-latency.
             keyType = PeerConnection.KeyType.ECDSA
-            enableDtlsSrtp = true
+            // `enableDtlsSrtp` used to live here. Current libwebrtc removed the
+            // flag because DTLS-SRTP is no longer optional — SDES was dropped,
+            // so media is always encrypted and there is nothing left to toggle.
             // Aggressive but not abusive on a mobile radio.
             iceConnectionReceivingTimeout = 8_000
             iceBackupCandidatePairPingInterval = 4_000
@@ -548,7 +550,13 @@ class WebRtcEngine(
 
     private open inner class SimpleSdpObserver(private val tag: String) : SdpObserver {
         override fun onCreateSuccess(desc: SessionDescription) = Unit
-        override fun onSetSuccess() = Log.d(TAG, "$tag ok")
+
+        // Braces, not `=`. `Log.d` returns an Int, and an expression body would
+        // make this override return Int where the interface declares Unit.
+        override fun onSetSuccess() {
+            Log.d(TAG, "$tag ok")
+        }
+
         override fun onCreateFailure(error: String) = callbacks.onError("$tag failed: $error", null)
         override fun onSetFailure(error: String) = callbacks.onError("$tag failed: $error", null)
     }
