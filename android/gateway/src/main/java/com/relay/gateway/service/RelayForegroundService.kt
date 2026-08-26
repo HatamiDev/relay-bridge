@@ -17,6 +17,7 @@ import com.relay.core.model.CallMute
 import com.relay.core.model.CallPlace
 import com.relay.core.model.CallRef
 import com.relay.core.model.CallStateUpdate
+import com.relay.core.model.Contact
 import com.relay.core.model.ContactsResult
 import com.relay.core.model.DeviceRole
 import com.relay.core.model.Ev
@@ -276,9 +277,7 @@ class RelayForegroundService : Service() {
                     }
                 }
 
-                Ev.CONTACTS_SYNC -> scope.launch {
-                    emitTo(fromDeviceId, Ev.CONTACTS_RESULT, ContactsResult(contactsMirror.load()))
-                }
+                Ev.CONTACTS_SYNC -> scope.launch { syncContacts(fromDeviceId) }
 
                 Ev.CALL_PLACE -> {
                     val place = json.decodeFromString<CallPlace>(payloadJson)
@@ -350,6 +349,71 @@ class RelayForegroundService : Service() {
         emit(event, json.encodeToString(payload))
 
     /** Encrypt-and-send to exactly one receiver — used for targeted replies. */
+    /**
+     * Send the address book to one receiver, in pages small enough to survive
+     * the relay's envelope cap.
+     *
+     * The previous version sent the whole book as a single [ContactsResult].
+     * With avatars attached that is megabytes; the relay rejects any envelope
+     * over `MAX_ENVELOPE_BYTES` (128 KB) and drops it without an error, so the
+     * receiver's contact list simply stayed empty forever with nothing in the
+     * log to say why.
+     *
+     * Names go first with the photo field stripped — that is a couple of pages
+     * for a 500-entry book, so the list fills almost at once — then the photos
+     * follow and the client merges each into the row already showing.
+     */
+    private suspend fun syncContacts(toDeviceId: String) {
+        val book = contactsMirror.load()
+        if (book.isEmpty()) {
+            // Still answer, so the receiver can tell "none" from "never arrived"
+            // and stop showing a spinner.
+            emitTo(toDeviceId, Ev.CONTACTS_RESULT, ContactsResult(emptyList(), 0, 1, false))
+            return
+        }
+
+        val lean = paginate(book.map { it.copy(photoB64 = "") })
+        lean.forEachIndexed { index, page ->
+            emitTo(toDeviceId, Ev.CONTACTS_RESULT, ContactsResult(page, index, lean.size, false))
+            delay(PAGE_GAP_MS)
+        }
+
+        val withPhotos = book.filter { it.photoB64.isNotEmpty() }
+        if (withPhotos.isEmpty()) return
+
+        val photos = paginate(withPhotos)
+        photos.forEachIndexed { index, page ->
+            emitTo(toDeviceId, Ev.CONTACTS_RESULT, ContactsResult(page, index, photos.size, true))
+            delay(PAGE_GAP_MS)
+        }
+        Log.i(TAG, "contacts: ${book.size} entries in ${lean.size}+${photos.size} pages")
+    }
+
+    /**
+     * Cut a contact list into pages by measured serialized size rather than by
+     * a fixed count, because entries differ by three orders of magnitude — a
+     * name and number is ~60 bytes, the same contact with an avatar is ~6 KB.
+     * A fixed page size would be either wasteful or occasionally over the cap.
+     */
+    private fun paginate(contacts: List<Contact>): List<List<Contact>> {
+        val pages = mutableListOf<List<Contact>>()
+        var current = mutableListOf<Contact>()
+        var size = 0
+
+        for (contact in contacts) {
+            val cost = json.encodeToString(contact).length + 1
+            if (current.isNotEmpty() && size + cost > PAGE_BUDGET_CHARS) {
+                pages += current
+                current = mutableListOf()
+                size = 0
+            }
+            current += contact
+            size += cost
+        }
+        if (current.isNotEmpty()) pages += current
+        return pages
+    }
+
     private fun emitTo(peerDeviceId: String, event: String, plaintextJson: String) {
         if (signaling?.sendTo(peerDeviceId, event, plaintextJson) != true) {
             Log.w(TAG, "failed to deliver $event to $peerDeviceId")
@@ -477,6 +541,15 @@ class RelayForegroundService : Service() {
         private const val TAG = "RelayFgService"
         private const val HEARTBEAT_INTERVAL_MS = 30_000L
         private const val MAX_PENDING = 300
+
+        // 40 KB of JSON per page against a 128 KB envelope cap. The gap leaves
+        // room for the base64 expansion of the ciphertext and the envelope
+        // header, with margin — going over means the page is dropped silently.
+        private const val PAGE_BUDGET_CHARS = 40 * 1024
+
+        // Paced so a large book does not monopolise the socket while a call or
+        // an inbound SMS is trying to get through.
+        private const val PAGE_GAP_MS = 40L
         private const val MAX_CALL_WAKE_MS = 4 * 60 * 60 * 1000L
 
         const val ACTION_RECONNECT = "com.relay.gateway.RECONNECT"

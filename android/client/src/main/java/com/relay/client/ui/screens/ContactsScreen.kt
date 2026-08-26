@@ -2,16 +2,20 @@ package com.relay.client.ui.screens
 
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.Person
 import androidx.compose.material.icons.rounded.Call
+import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Message
+import androidx.compose.material.icons.rounded.Person
+import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Star
 import androidx.compose.material3.Icon
@@ -31,21 +35,21 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.relay.client.data.RelayRepository
 import com.relay.client.ui.call.CallActivity
-import com.relay.client.ui.components.CircleIconButton
-import com.relay.client.ui.components.DockSpacer
-import com.relay.client.ui.components.GlassSurface
-import com.relay.client.ui.components.SquircleShape
 import com.relay.client.ui.theme.Glass
 import com.relay.client.util.decodeBase64Image
 import com.relay.client.util.initials
 import com.relay.core.model.Contact
 
 /**
- * Agent 4 — the mirrored contact book.
+ * The mirrored address book.
  *
- * Contacts live on the gateway; this screen renders the encrypted mirror. The
- * search field filters on both name and number with the digits normalised, so
- * typing "5550109" finds "+1 (555) 010-9999".
+ * Contacts live on the gateway — this handset has no SIM and no contacts of its
+ * own — so this screen renders whatever the gateway has sent. Search filters on
+ * name and on digits with the formatting stripped, so typing `9121234` finds
+ * `+98 912 123 4567`.
+ *
+ * Laid out to the kit's list geometry, the same as Chats and Calls: 64dp bar,
+ * 72dp rows, 48dp circular avatar, 16dp gutters, no dividers.
  */
 @Composable
 fun ContactsScreen(
@@ -60,111 +64,171 @@ fun ContactsScreen(
     val contacts by repository.contacts.collectAsState()
     var query by rememberSaveable { mutableStateOf("") }
 
+    // Asked for once per visit while empty. The gateway also pushes the book
+    // unprompted on every fresh session, so this only covers the case where the
+    // receiver opened the tab before that arrived.
     LaunchedEffect(Unit) { if (contacts.isEmpty()) repository.requestContacts() }
 
     val filtered = remember(contacts, query) {
-        if (query.isBlank()) {
-            contacts
-        } else {
-            val needle = query.trim().lowercase()
-            val digits = needle.filter(Char::isDigit)
-            contacts.filter { contact ->
-                contact.name.lowercase().contains(needle) ||
+        val needle = query.trim().lowercase()
+        val digits = needle.filter(Char::isDigit)
+        contacts
+            .filter { contact ->
+                needle.isEmpty() ||
+                    contact.name.lowercase().contains(needle) ||
                     (digits.isNotEmpty() && contact.number.filter(Char::isDigit).contains(digits))
             }
-        }.sortedWith(compareByDescending<Contact> { it.pinned }.thenBy { it.name.lowercase() })
+            .sortedWith(compareByDescending<Contact> { it.pinned }.thenBy { it.name.lowercase() })
     }
 
-    LazyColumn(
-        modifier = modifier.fillMaxSize(),
-        contentPadding = PaddingValues(top = 56.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        item(key = "header") {
-            Column(Modifier.padding(horizontal = dimens.screenPadding)) {
+    Column(modifier.fillMaxSize().background(colors.canvas)) {
+
+        // ── App bar ──────────────────────────────────────────────────────────
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .background(colors.canvasRaised)
+                .statusBarsPadding(),
+        ) {
+            Row(
+                Modifier.fillMaxWidth().height(64.dp).padding(horizontal = 16.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
                 Text(
                     "Contacts",
                     color = colors.textPrimary,
-                    fontSize = 30.sp,
+                    fontSize = 24.sp,
                     fontWeight = FontWeight.Bold,
-                    letterSpacing = (-0.6).sp,
+                    modifier = Modifier.weight(1f),
                 )
-                Spacer(Modifier.height(12.dp))
-                SearchField(query) { query = it }
-                Spacer(Modifier.height(4.dp))
+                if (contacts.isNotEmpty()) {
+                    Text(
+                        "${contacts.size}",
+                        color = colors.textSecondary,
+                        fontSize = 14.sp,
+                    )
+                    Spacer(Modifier.width(12.dp))
+                }
+                Icon(
+                    Icons.Rounded.Refresh,
+                    contentDescription = "Re-sync contacts from the sender",
+                    tint = colors.textPrimary,
+                    modifier = Modifier
+                        .size(24.dp)
+                        .clickable { repository.requestContacts() },
+                )
             }
+
+            Box(Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
+                SearchField(query, onValueChange = { query = it }, onClear = { query = "" })
+            }
+
+            Box(Modifier.fillMaxWidth().height(1.dp).background(colors.glassBorder))
         }
 
+        // ── List ─────────────────────────────────────────────────────────────
         if (filtered.isEmpty()) {
-            item(key = "empty") {
-                GlassSurface(
-                    Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = dimens.screenPadding, vertical = 30.dp),
-                ) {
-                    Text(
-                        if (contacts.isEmpty()) {
-                            "Waiting for the gateway to mirror its contacts…"
-                        } else {
-                            "No contacts match \"$query\"."
+            Column(
+                Modifier.fillMaxSize().padding(horizontal = 32.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center,
+            ) {
+                Text(
+                    if (contacts.isEmpty()) "No contacts yet" else "No matches",
+                    color = colors.textPrimary,
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Medium,
+                )
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    if (contacts.isEmpty()) {
+                        "The sender mirrors its address book once it is connected " +
+                            "and has been granted contact access. Tap the refresh " +
+                            "icon to ask again."
+                    } else {
+                        "Nothing matches \"$query\"."
+                    },
+                    color = colors.textSecondary,
+                    fontSize = 14.sp,
+                    lineHeight = 19.6.sp,
+                )
+            }
+        } else {
+            LazyColumn(
+                Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(bottom = dimens.dockHeight + 48.dp),
+            ) {
+                // Keyed by number, not by contact id: one address-book entry
+                // with a mobile and a landline shares a single id, and duplicate
+                // keys make LazyColumn throw.
+                items(filtered, key = { it.number }) { contact ->
+                    ContactRow(
+                        contact = contact,
+                        onMessage = { onOpenThread(contact.number.normalizedKey()) },
+                        onCall = {
+                            val callId = repository.placeCall(contact.number)
+                            context.startActivity(
+                                CallActivity.outgoingIntent(
+                                    context, callId, contact.number, contact.name,
+                                ),
+                            )
                         },
-                        color = colors.textTertiary,
-                        fontSize = 13.sp,
-                        modifier = Modifier.padding(24.dp),
                     )
                 }
             }
-        } else {
-            items(filtered, key = { it.id.ifEmpty { it.number } }) { contact ->
-                ContactRow(
-                    contact = contact,
-                    modifier = Modifier.padding(horizontal = dimens.screenPadding),
-                    onMessage = { onOpenThread(contact.number.normalizedKey()) },
-                    onCall = {
-                        val callId = repository.placeCall(contact.number)
-                        context.startActivity(
-                            CallActivity.outgoingIntent(
-                                context, callId, contact.number, contact.name,
-                            ),
-                        )
-                    },
-                )
-            }
         }
-
-        // The dock floats over the list, so the last row needs somewhere to go.
-        item(key = "dock-gap") { DockSpacer() }
     }
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+
 @Composable
-private fun SearchField(value: String, onValueChange: (String) -> Unit) {
+private fun SearchField(
+    value: String,
+    onValueChange: (String) -> Unit,
+    onClear: () -> Unit,
+) {
     val colors = Glass.colors
-    GlassSurface(Modifier.fillMaxWidth(), shape = RoundedCornerShape(50)) {
-        Row(
-            Modifier.padding(horizontal = 14.dp, vertical = 11.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Icon(
-                Icons.Rounded.Search,
-                contentDescription = null,
-                tint = colors.textTertiary,
-                modifier = Modifier.size(17.dp),
-            )
-            Spacer(Modifier.width(9.dp))
-            Box(Modifier.weight(1f)) {
-                if (value.isEmpty()) {
-                    Text("Search name or number", color = colors.textTertiary, fontSize = 14.sp)
-                }
-                BasicTextField(
-                    value = value,
-                    onValueChange = onValueChange,
-                    singleLine = true,
-                    textStyle = TextStyle(color = colors.textPrimary, fontSize = 14.sp),
-                    cursorBrush = SolidColor(colors.accent),
-                    modifier = Modifier.fillMaxWidth(),
-                )
+    val shape = RoundedCornerShape(Glass.dimens.pillRadius)
+
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .height(40.dp)
+            .clip(shape)
+            .background(colors.glassLight)
+            .border(1.dp, colors.glassBorder, shape)
+            .padding(horizontal = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(
+            Icons.Rounded.Search,
+            contentDescription = null,
+            tint = colors.textSecondary,
+            modifier = Modifier.size(20.dp),
+        )
+        Spacer(Modifier.width(8.dp))
+        Box(Modifier.weight(1f)) {
+            if (value.isEmpty()) {
+                Text("Search name or number", color = colors.textSecondary, fontSize = 14.sp)
             }
+            BasicTextField(
+                value = value,
+                onValueChange = onValueChange,
+                singleLine = true,
+                textStyle = TextStyle(color = colors.textPrimary, fontSize = 14.sp),
+                cursorBrush = SolidColor(colors.accent),
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
+        if (value.isNotEmpty()) {
+            Spacer(Modifier.width(8.dp))
+            Icon(
+                Icons.Rounded.Close,
+                contentDescription = "Clear the search",
+                tint = colors.textSecondary,
+                modifier = Modifier.size(20.dp).clickable(onClick = onClear),
+            )
         }
     }
 }
@@ -177,89 +241,102 @@ private fun ContactRow(
     modifier: Modifier = Modifier,
 ) {
     val colors = Glass.colors
+
+    Row(
+        modifier
+            .fillMaxWidth()
+            .height(72.dp)
+            .clickable(onClick = onMessage)
+            .padding(horizontal = 16.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        ContactAvatar(contact)
+
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    contact.name,
+                    color = colors.textPrimary,
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Medium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false),
+                )
+                if (contact.pinned) {
+                    Spacer(Modifier.width(6.dp))
+                    Icon(
+                        Icons.Rounded.Star,
+                        contentDescription = "Starred",
+                        tint = colors.warning,
+                        modifier = Modifier.size(14.dp),
+                    )
+                }
+            }
+            Text(
+                contact.number,
+                color = colors.textSecondary,
+                fontSize = 14.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+
+        // Each action names the contact: a screen reader moving down the list
+        // would otherwise hear "Message, Call" twenty times over with nothing
+        // to say which row it is on.
+        Icon(
+            Icons.Rounded.Message,
+            contentDescription = "Message ${contact.name}",
+            tint = colors.textPrimary,
+            modifier = Modifier.size(24.dp).clickable(onClick = onMessage),
+        )
+        Icon(
+            Icons.Rounded.Call,
+            contentDescription = "Call ${contact.name}",
+            tint = colors.textPrimary,
+            modifier = Modifier.size(24.dp).clickable(onClick = onCall),
+        )
+    }
+}
+
+@Composable
+private fun ContactAvatar(contact: Contact) {
+    val colors = Glass.colors
     val photo = remember(contact.photoB64) { decodeBase64Image(contact.photoB64) }
-    val shape = remember { SquircleShape(16.dp) }
 
-    GlassSurface(modifier.fillMaxWidth().clickable(onClick = onMessage)) {
-        Row(
-            Modifier.padding(horizontal = 14.dp, vertical = 11.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Box(
-                Modifier.size(44.dp).clip(shape).background(colors.canvasRaised),
-                contentAlignment = Alignment.Center,
-            ) {
-                if (photo != null) {
-                    Image(
-                        bitmap = photo,
-                        contentDescription = null,
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier.matchParentSize().clip(shape),
-                    )
-                } else {
-                    val letters = contact.name.initials()
-                    if (letters.isNotEmpty()) {
-                        Text(
-                            letters,
-                            color = colors.textPrimary,
-                            fontSize = 18.sp,
-                            fontWeight = FontWeight.Bold,
-                        )
-                    } else {
-                        Icon(
-                            Icons.Rounded.Person,
-                            contentDescription = null,
-                            tint = colors.textPrimary.copy(alpha = 0.72f),
-                            modifier = Modifier.size(22.dp),
-                        )
-                    }
-                }
-            }
-
-            Spacer(Modifier.width(12.dp))
-
-            Column(Modifier.weight(1f)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        contact.name,
-                        color = colors.textPrimary,
-                        fontSize = 15.sp,
-                        fontWeight = FontWeight.Medium,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f, fill = false),
-                    )
-                    if (contact.pinned) {
-                        Spacer(Modifier.width(6.dp))
-                        Icon(
-                            Icons.Rounded.Star,
-                            contentDescription = "Starred",
-                            tint = colors.warning,
-                            modifier = Modifier.size(13.dp),
-                        )
-                    }
-                }
-                Text(contact.number, color = colors.textTertiary, fontSize = 12.sp)
-            }
-
-            // Each action names the contact: a screen reader moving down the
-            // list would otherwise hear "Message, Call" twenty times over with
-            // nothing to say which row it is on.
-            CircleIconButton(
-                icon = Icons.Rounded.Message,
-                contentDescription = "Message ${contact.name}",
-                tint = colors.accent,
-                background = colors.accent.copy(alpha = 0.15f),
-                onClick = onMessage,
+    Box(
+        Modifier
+            .size(48.dp)
+            .clip(CircleShape)
+            .background(colors.auroraTeal),   // Extended Primary 500 · #3E3180
+        contentAlignment = Alignment.Center,
+    ) {
+        if (photo != null) {
+            Image(
+                bitmap = photo,
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.matchParentSize().clip(CircleShape),
             )
-            Spacer(Modifier.width(8.dp))
-            CircleIconButton(
-                icon = Icons.Rounded.Call,
-                contentDescription = "Call ${contact.name}",
-                tint = colors.success,
-                background = colors.success.copy(alpha = 0.15f),
-                onClick = onCall,
-            )
+        } else {
+            val letters = contact.name.initials()
+            if (letters.isNotEmpty()) {
+                Text(
+                    letters,
+                    color = colors.textPrimary,
+                    fontSize = 20.sp,
+                    fontWeight = FontWeight.Bold,
+                )
+            } else {
+                Icon(
+                    Icons.Rounded.Person,
+                    contentDescription = null,
+                    tint = colors.textPrimary.copy(alpha = 0.72f),
+                    modifier = Modifier.size(26.dp),
+                )
+            }
         }
     }
 }

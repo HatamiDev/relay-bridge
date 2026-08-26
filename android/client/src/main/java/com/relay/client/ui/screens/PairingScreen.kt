@@ -403,72 +403,76 @@ private fun CodeField(
 ) {
     val colors = Glass.colors
 
-    Box(Modifier.fillMaxWidth()) {
-        BasicTextField(
-            value = value,
-            onValueChange = onValueChange,
-            singleLine = true,
-            textStyle = TextStyle(color = Color.Transparent, fontSize = 1.sp),
-            cursorBrush = SolidColor(Color.Transparent),
-            keyboardOptions = KeyboardOptions(
-                capitalization = KeyboardCapitalization.Characters,
-                autoCorrectEnabled = false,
-                imeAction = ImeAction.Done,
-            ),
-            modifier = Modifier
-                .matchParentSize()
-                .focusRequester(focusRequester),
-            decorationBox = { inner ->
-                // Keep the real field in the tree so the IME stays attached.
-                Box(Modifier.size(0.dp)) { inner() }
+    // No wrapper Box here, deliberately. The field used to sit inside one with
+    // `matchParentSize()`, but matchParentSize contributes nothing to the
+    // parent's measurement — and with no other child, the Box measured zero
+    // high. The eight code boxes were then drawn outside their own layout
+    // bounds, which is why the Connect button landed on top of them.
+    // Sizing the field itself from its decoration box fixes it.
+    BasicTextField(
+        value = value,
+        onValueChange = onValueChange,
+        singleLine = true,
+        textStyle = TextStyle(color = Color.Transparent, fontSize = 1.sp),
+        cursorBrush = SolidColor(Color.Transparent),
+        keyboardOptions = KeyboardOptions(
+            capitalization = KeyboardCapitalization.Characters,
+            autoCorrectEnabled = false,
+            imeAction = ImeAction.Done,
+        ),
+        modifier = Modifier
+            .fillMaxWidth()
+            .focusRequester(focusRequester),
+        decorationBox = { inner ->
+            // Keep the real field in the tree so the IME stays attached.
+            Box(Modifier.size(0.dp)) { inner() }
 
-                Row(
-                    Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                ) {
-                    repeat(CODE_LENGTH) { index ->
-                        val char = value.getOrNull(index)
-                        val active = index == value.length
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                repeat(CODE_LENGTH) { index ->
+                    val char = value.getOrNull(index)
+                    val active = index == value.length
 
-                        Box(
-                            Modifier
-                                .weight(1f)
-                                .aspectRatio(0.78f)
-                                .clip(RoundedCornerShape(12.dp))
-                                .background(
-                                    when {
-                                        isError -> colors.danger.copy(alpha = 0.12f)
-                                        char != null -> colors.accentSoft
-                                        else -> colors.glassDark
-                                    },
-                                )
-                                .border(
-                                    width = if (active) 1.5.dp else 1.dp,
-                                    color = when {
-                                        isError -> colors.danger
-                                        active -> colors.accent
-                                        else -> colors.glassBorder
-                                    },
-                                    shape = RoundedCornerShape(12.dp),
-                                ),
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            Text(
-                                char?.toString() ?: "",
-                                color = if (isError) colors.danger else colors.textPrimary,
-                                fontSize = 20.sp,
-                                fontFamily = FontFamily.Monospace,
-                                fontWeight = FontWeight.Bold,
+                    Box(
+                        Modifier
+                            .weight(1f)
+                            .aspectRatio(0.78f)
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(
+                                when {
+                                    isError -> colors.danger.copy(alpha = 0.12f)
+                                    char != null -> colors.accentSoft
+                                    else -> colors.glassDark
+                                },
                             )
-                        }
-
-                        // Visual break where the sender renders its hyphen.
-                        if (index == 3) Spacer(Modifier.width(4.dp))
+                            .border(
+                                width = if (active) 1.5.dp else 1.dp,
+                                color = when {
+                                    isError -> colors.danger
+                                    active -> colors.accent
+                                    else -> colors.glassBorder
+                                },
+                                shape = RoundedCornerShape(12.dp),
+                            ),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(
+                            char?.toString() ?: "",
+                            color = if (isError) colors.danger else colors.textPrimary,
+                            fontSize = 20.sp,
+                            fontFamily = FontFamily.Monospace,
+                            fontWeight = FontWeight.Bold,
+                        )
                     }
+
+                    // Visual break where the sender renders its hyphen.
+                    if (index == 3) Spacer(Modifier.width(4.dp))
                 }
-            },
-        )
-    }
+            }
+        },
+    )
 }
 
 // ── QR scanner ───────────────────────────────────────────────────────────────

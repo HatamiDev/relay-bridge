@@ -1,5 +1,6 @@
 package com.relay.client.ui.screens
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -17,17 +18,20 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -39,6 +43,7 @@ import com.relay.client.data.RelayRepository
 import com.relay.client.ui.call.CallActivity
 import com.relay.client.ui.components.Dialpad
 import com.relay.client.ui.theme.Glass
+import com.relay.client.util.decodeBase64Image
 import com.relay.client.util.initials
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -72,6 +77,12 @@ fun CallLogScreen(repository: RelayRepository, modifier: Modifier = Modifier) {
     // a destination you have to navigate away from.
     var dialpadOpen by rememberSaveable { mutableStateOf(false) }
     var dialled by rememberSaveable { mutableStateOf("") }
+
+    // skipPartiallyExpanded, or the sheet opens at half height with the keypad
+    // cut off below the fold — a keypad you have to drag before you can dial is
+    // worse than no keypad. There is nothing above the fold worth previewing
+    // here, so the half-expanded state has no purpose.
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
     fun place(number: String, displayName: String = number) {
         val target = number.trim()
@@ -143,11 +154,12 @@ fun CallLogScreen(repository: RelayRepository, modifier: Modifier = Modifier) {
                     contentPadding = PaddingValues(bottom = dimens.dockHeight + 88.dp),
                 ) {
                     items(entries, key = { it.id }) { entry ->
-                        val name = repository.displayNameFor(entry.number)
-                            .ifEmpty { entry.number }
+                        val contact = repository.contactFor(entry.number)
+                        val name = contact?.name?.ifEmpty { null } ?: entry.number
                         CallLogRow(
                             entry = entry,
                             displayName = name,
+                            photoB64 = contact?.photoB64.orEmpty(),
                             onCallBack = { place(entry.number, name) },
                         )
                     }
@@ -170,6 +182,7 @@ fun CallLogScreen(repository: RelayRepository, modifier: Modifier = Modifier) {
         if (dialpadOpen) {
             ModalBottomSheet(
                 onDismissRequest = { dialpadOpen = false },
+                sheetState = sheetState,
                 containerColor = colors.canvasRaised,
                 contentColor = colors.textPrimary,
             ) {
@@ -185,7 +198,9 @@ fun CallLogScreen(repository: RelayRepository, modifier: Modifier = Modifier) {
                         // rather than re-offering a number already dialled.
                         dialled = ""
                     },
-                    modifier = Modifier.padding(bottom = 32.dp),
+                    modifier = Modifier
+                        .navigationBarsPadding()
+                        .padding(bottom = 16.dp),
                 )
             }
         }
@@ -200,6 +215,7 @@ fun CallLogScreen(repository: RelayRepository, modifier: Modifier = Modifier) {
 private fun CallLogRow(
     entry: CallLog,
     displayName: String,
+    photoB64: String,
     onCallBack: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -230,7 +246,7 @@ private fun CallLogRow(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        CallAvatar(displayName)
+        CallAvatar(displayName, photoB64)
 
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Text(
@@ -275,9 +291,10 @@ private fun CallLogRow(
 }
 
 @Composable
-private fun CallAvatar(name: String) {
+private fun CallAvatar(name: String, photoB64: String) {
     val colors = Glass.colors
     val letters = name.initials()
+    val photo = remember(photoB64) { decodeBase64Image(photoB64) }
 
     Box(
         Modifier
@@ -286,7 +303,14 @@ private fun CallAvatar(name: String) {
             .background(colors.auroraTeal),   // Extended Primary 500 · #3E3180
         contentAlignment = Alignment.Center,
     ) {
-        if (letters.isNotEmpty()) {
+        if (photo != null) {
+            Image(
+                bitmap = photo,
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.matchParentSize().clip(CircleShape),
+            )
+        } else if (letters.isNotEmpty()) {
             Text(
                 letters,
                 color = colors.textPrimary,

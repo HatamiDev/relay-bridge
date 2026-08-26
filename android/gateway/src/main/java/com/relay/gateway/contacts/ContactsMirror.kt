@@ -126,8 +126,13 @@ class ContactsMirror(private val context: Context) {
     private companion object {
         const val TAG = "ContactsMirror"
         const val MAX_CONTACTS = 500
-        const val TARGET_PX = 128
-        const val JPEG_QUALITY = 70
-        const val MAX_PHOTO_BYTES = 24 * 1024
+        // 96 px covers a 48 dp avatar at 2x and is still crisp at 3x once the
+        // circle mask is applied. Every kilobyte here is multiplied by 500 and
+        // then divided into 40 KB pages, so the size drives the message count:
+        // at 24 KB an avatar-heavy book needed ~160 messages, at ~4 KB it needs
+        // about a dozen.
+        const val TARGET_PX = 96
+        const val JPEG_QUALITY = 55
+        const val MAX_PHOTO_BYTES = 8 * 1024
     }
 }

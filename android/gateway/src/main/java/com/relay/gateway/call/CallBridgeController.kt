@@ -139,7 +139,10 @@ class CallBridgeController(
         pendingRemoteIce.clear()
 
         when (call.state) {
-            Call.STATE_RINGING -> announceRinging(call)
+            // SIMULATED_RINGING is what Samsung's Telecom reports while it
+            // plays its own ringtone; treating it as "not ringing" is why the
+            // receiver stayed silent on exactly the handset this bridge runs on.
+            Call.STATE_RINGING, Call.STATE_SIMULATED_RINGING -> announceRinging(call)
             Call.STATE_DIALING, Call.STATE_CONNECTING -> {
                 state = CallState.DIALING
                 pushState(CallState.DIALING)
@@ -188,7 +191,7 @@ class CallBridgeController(
         when (newState) {
             // The branch that was missing. Without it, a call added in
             // STATE_NEW never reached any receiver.
-            Call.STATE_RINGING -> announceRinging(call)
+            Call.STATE_RINGING, Call.STATE_SIMULATED_RINGING -> announceRinging(call)
             Call.STATE_ACTIVE -> startBridge()
             Call.STATE_HOLDING -> { state = CallState.HELD; pushState(CallState.HELD) }
             Call.STATE_DISCONNECTED, Call.STATE_DISCONNECTING -> {

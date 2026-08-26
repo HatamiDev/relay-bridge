@@ -116,6 +116,8 @@ data class PairedPeer(
     /** 6-digit short authentication string — must match on both screens. */
     val sas: String = "",
     val online: Boolean = false,
+    /** Set once a human compared the two SAS numbers and said they matched. */
+    val confirmed: Boolean = false,
     val pairedAt: Long = 0L,
     val lastSeen: Long = 0L,
 )
@@ -173,8 +175,27 @@ data class Contact(
     val lastSeenTs: Long = 0L,
 )
 
+/**
+ * One page of a contact sync.
+ *
+ * The whole address book does not fit in a single envelope — the relay caps an
+ * envelope at 128 KB and silently drops anything larger — so the gateway sends
+ * the book in pages and the client stitches them back together.
+ *
+ * Two passes, not one. The first pass carries names and numbers with the photo
+ * field blank, so a 500-entry book lands in two or three messages and the list
+ * is usable almost immediately. The second pass (`photos = true`) re-sends only
+ * the entries that have an avatar, and the client merges each one into the row
+ * already on screen. A slow trickle of photos is then invisible: the names are
+ * already there.
+ */
 @Serializable
-data class ContactsResult(val contacts: List<Contact>)
+data class ContactsResult(
+    val contacts: List<Contact>,
+    val page: Int = 0,
+    val pages: Int = 1,
+    val photos: Boolean = false,
+)
 
 @Serializable
 data class CallIncoming(

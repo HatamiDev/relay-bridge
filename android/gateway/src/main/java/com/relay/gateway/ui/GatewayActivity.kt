@@ -2,6 +2,12 @@ package com.relay.gateway.ui
 
 import android.Manifest
 import android.app.role.RoleManager
+import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.Lifecycle
+import androidx.compose.runtime.DisposableEffect
+import android.telecom.TelecomManager
+import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.Color as AndroidColor
@@ -107,6 +113,13 @@ private fun GatewayScreen() {
         mutableStateOf(SystemHealth.isIgnoringBatteryOptimizations(context))
     }
 
+    // Whether Android will actually bind our InCallService. Without this role
+    // no call event ever reaches the app, so the gateway rings, the receiver
+    // hears nothing, and there is no error anywhere to explain it. The card
+    // used to offer the request with no indication of the result, which made an
+    // ungranted role indistinguishable from a granted one.
+    var dialerHeld by remember { mutableStateOf(holdsDialerRole(context)) }
+
     val permissions = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions(),
     ) { granted ->
@@ -123,11 +136,29 @@ private fun GatewayScreen() {
     ) { result ->
         // Activity.RESULT_OK, not ComponentActivity.RESULT_OK — Kotlin does not
         // surface inherited Java statics through a subclass name.
-        status = if (result.resultCode == android.app.Activity.RESULT_OK) {
+        // The result code lies on some OEM builds — Samsung returns CANCELED
+        // even after the user accepts. Ask the system what it actually thinks.
+        dialerHeld = holdsDialerRole(context)
+        status = if (dialerHeld) {
             "Dialer role granted — call relay is live."
         } else {
             "Dialer role declined. Messages will relay; calls will not."
         }
+    }
+
+    // Both can be changed from system settings while this screen is in the
+    // background, so re-read them whenever it comes forward rather than trusting
+    // the value captured at first composition.
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                dialerHeld = holdsDialerRole(context)
+                dozeExempt = SystemHealth.isIgnoringBatteryOptimizations(context)
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
     /** Start or restart the pairing session and begin polling for joins. */
@@ -299,20 +330,37 @@ private fun GatewayScreen() {
                         ReceiverRow(
                             label = peer.label.ifEmpty { peer.model.ifEmpty { peer.deviceId } },
                             sas = peer.sas,
+                            confirmed = peer.confirmed,
                             onConfirm = {
                                 scope.launch {
+                                    status = "Confirming…"
+                                    // The result used to be discarded and the
+                                    // success message printed unconditionally,
+                                    // so a rejected confirm looked exactly like
+                                    // a successful one — and since the row never
+                                    // changed either, the button looked dead
+                                    // whichever way the call went.
                                     coordinator.confirmReceiver(peer.deviceId)
-                                    // Confirming is the moment this device
-                                    // stops being "a phone showing a QR code"
-                                    // and becomes a paired gateway. The
-                                    // foreground service was started earlier,
-                                    // before any peer existed, so its connect()
-                                    // bailed out on `isPaired` and left the
-                                    // socket closed. Nothing else ever asked it
-                                    // to try again. Poke it now that a root key
-                                    // is on disk and `isPaired` is finally true.
-                                    RelayForegroundService.reconnect(context)
-                                    status = "${peer.label} confirmed."
+                                        .onSuccess {
+                                            store.markConfirmed(peer.deviceId)
+                                            receivers = store.peers()
+                                            // Confirming is the moment this
+                                            // device stops being "a phone
+                                            // showing a QR code" and becomes a
+                                            // paired gateway. The foreground
+                                            // service was started earlier,
+                                            // before any peer existed, so its
+                                            // connect() bailed out on isPaired
+                                            // and left the socket closed.
+                                            // Nothing else ever asked it to try
+                                            // again — poke it now that a root
+                                            // key is on disk.
+                                            RelayForegroundService.reconnect(context)
+                                            status = "${peer.label.ifEmpty { "Receiver" }} confirmed."
+                                        }
+                                        .onFailure {
+                                            status = "Confirm failed: " + friendlyError(it)
+                                        }
                                 }
                             },
                             onRemove = {
@@ -340,6 +388,12 @@ private fun GatewayScreen() {
 
             // ── Dialer role ──────────────────────────────────────────────────
             StepCard("Default phone app", accent = colors.accent) {
+                StatusLine(
+                    ok = dialerHeld,
+                    okText = "Dialer role held — calls relay",
+                    badText = "Dialer role missing — calls will NOT relay",
+                )
+                Spacer(Modifier.height(10.dp))
                 Text(
                     "Android only binds a call listener to the app holding the dialer " +
                         "role. Your usual dialer UI stays exactly as it is — this app " +
@@ -347,7 +401,7 @@ private fun GatewayScreen() {
                     color = colors.textTertiary, fontSize = 12.5.sp, lineHeight = 17.sp,
                 )
                 Spacer(Modifier.height(12.dp))
-                PrimaryButton("Request dialer role") {
+                PrimaryButton(if (dialerHeld) "Change default phone app" else "Request dialer role") {
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                         val roleManager = context.getSystemService(RoleManager::class.java)
                         if (roleManager?.isRoleAvailable(RoleManager.ROLE_DIALER) == true) {
@@ -500,6 +554,7 @@ private fun StepCard(
 private fun ReceiverRow(
     label: String,
     sas: String,
+    confirmed: Boolean,
     onConfirm: () -> Unit,
     onRemove: () -> Unit,
 ) {
@@ -541,8 +596,32 @@ private fun ReceiverRow(
                 letterSpacing = 3.sp,
             )
             Spacer(Modifier.height(10.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                PrimaryButton("Numbers match", Modifier.weight(1f), onClick = onConfirm)
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                if (confirmed) {
+                    Row(
+                        Modifier.weight(1f),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Icon(
+                            Icons.Rounded.CheckCircle,
+                            contentDescription = null,
+                            tint = colors.success,
+                            modifier = Modifier.size(16.dp),
+                        )
+                        Spacer(Modifier.width(6.dp))
+                        Text(
+                            "Verified",
+                            color = colors.success,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Medium,
+                        )
+                    }
+                } else {
+                    PrimaryButton("Numbers match", Modifier.weight(1f), onClick = onConfirm)
+                }
                 SecondaryButton("Remove", Modifier.weight(1f), tint = colors.danger, onClick = onRemove)
             }
         }
@@ -614,6 +693,41 @@ private fun SecondaryButton(
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
+
+/**
+ * Turn a thrown pairing error into something a person can act on.
+ *
+ * The raw text is usually an HTTP body or a socket exception; neither tells the
+ * user whether to retry, re-pair, or check the network, which is the only
+ * decision they can actually make from this screen.
+ */
+private fun friendlyError(t: Throwable): String {
+    val text = (t.message ?: t::class.simpleName.orEmpty()).lowercase()
+    return when {
+        "401" in text || "unauthor" in text -> "this device is no longer paired — re-pair it"
+        "404" in text -> "the receiver is not waiting any more — ask it to enter the code again"
+        "timeout" in text || "timed out" in text -> "the relay did not answer in time"
+        "unable to resolve" in text || "failed to connect" in text ->
+            "cannot reach the relay server"
+        else -> t.message ?: "unknown error"
+    }
+}
+
+/**
+ * Does this app currently hold the dialer role?
+ *
+ * Checked through RoleManager on Android 10+ and by comparing the package name
+ * against the default-dialer package below that, because RoleManager did not
+ * exist before Q.
+ */
+private fun holdsDialerRole(context: Context): Boolean =
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+        context.getSystemService(RoleManager::class.java)
+            ?.isRoleHeld(RoleManager.ROLE_DIALER) == true
+    } else {
+        context.getSystemService(TelecomManager::class.java)
+            ?.defaultDialerPackage == context.packageName
+    }
 
 private fun requiredPermissions(): Array<String> = buildList {
     add(Manifest.permission.RECEIVE_SMS)

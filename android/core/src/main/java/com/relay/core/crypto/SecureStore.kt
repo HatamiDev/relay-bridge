@@ -128,6 +128,18 @@ class SecureStore(context: Context) {
         savePeers(updated.sortedByDescending { it.pairedAt })
     }
 
+    /**
+     * Record that the SAS was verified by eye.
+     *
+     * Kept on disk rather than in UI state so the row does not offer to confirm
+     * a peer again after the activity is recreated, which reads as the button
+     * having done nothing.
+     */
+    fun markConfirmed(deviceId: String) {
+        val peer = peer(deviceId) ?: return
+        upsertPeer(peer.copy(confirmed = true))
+    }
+
     fun removePeer(deviceId: String) {
         savePeers(peers().filterNot { it.deviceId == deviceId })
         prefs.edit()

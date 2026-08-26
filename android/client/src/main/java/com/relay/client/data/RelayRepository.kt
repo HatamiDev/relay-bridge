@@ -84,6 +84,10 @@ class RelayRepository private constructor(context: Context) {
     private val _contacts = MutableStateFlow<List<Contact>>(emptyList())
     val contacts: StateFlow<List<Contact>> = _contacts.asStateFlow()
 
+    // Pages arrive one message at a time and are stitched here, keyed by the
+    // normalised number so a contact listed twice collapses to one row.
+    private val contactBook = LinkedHashMap<String, Contact>()
+
     private val _iceServers = MutableStateFlow<List<IceServerDto>>(emptyList())
     val iceServers: StateFlow<List<IceServerDto>> = _iceServers.asStateFlow()
 
@@ -270,7 +274,7 @@ class RelayRepository private constructor(context: Context) {
                 }
 
                 Ev.CONTACTS_RESULT -> {
-                    _contacts.value = json.decodeFromString<ContactsResult>(payload).contacts
+                    mergeContacts(json.decodeFromString<ContactsResult>(payload))
                     rebuildThreads()   // names may now resolve
                 }
 
@@ -488,11 +492,13 @@ class RelayRepository private constructor(context: Context) {
 
     @Synchronized
     private fun rebuildThreads() {
-        val contactIndex = _contacts.value.associateBy { normalize(it.number) }
+        // Resolved through contactFor rather than a plain map lookup so a
+        // thread keyed on a local number (0912…) still finds the address-book
+        // entry stored in E.164 (+98912…).
         _threads.value = messages.entries
             .mapNotNull { (threadId, bucket) ->
                 val last = bucket.lastOrNull() ?: return@mapNotNull null
-                val contact = contactIndex[threadId]
+                val contact = contactFor(threadId)
                 Conversation(
                     threadId = threadId,
                     address = last.address,
@@ -522,9 +528,55 @@ class RelayRepository private constructor(context: Context) {
         rebuildThreads()
     }
 
-    fun displayNameFor(number: String): String {
+    /**
+     * Fold one page of a contact sync into the book.
+     *
+     * Page 0 of a name pass starts a fresh book, so a re-sync replaces rather
+     * than duplicates. A photo pass never adds rows — it only fills the avatar
+     * on a row the name pass already delivered, which keeps a late or partial
+     * photo pass from resurrecting a contact deleted on the gateway.
+     */
+    @Synchronized
+    private fun mergeContacts(result: ContactsResult) {
+        if (!result.photos && result.page == 0) contactBook.clear()
+
+        for (contact in result.contacts) {
+            val key = normalize(contact.number)
+            if (result.photos) {
+                val existing = contactBook[key] ?: continue
+                contactBook[key] = existing.copy(photoB64 = contact.photoB64)
+            } else {
+                contactBook[key] = contact
+            }
+        }
+
+        _contacts.value = contactBook.values.toList()
+    }
+
+    /**
+     * Resolve a number to a contact name.
+     *
+     * Exact match first, then the last nine digits. The address book stores
+     * E.164 (`+989121234567`) while an SMS or a dialled number often arrives in
+     * local form (`09121234567`); comparing the tails is what makes those two
+     * the same person. Nine digits is long enough that a false match needs two
+     * different subscribers to share a nine-digit suffix, and short enough to
+     * survive any combination of country code and trunk prefix.
+     */
+    fun displayNameFor(number: String): String = contactFor(number)?.name.orEmpty()
+
+    /** Contact photo as base64 JPEG, or "" when there is none. */
+    fun photoFor(number: String): String = contactFor(number)?.photoB64.orEmpty()
+
+    fun contactFor(number: String): Contact? {
         val key = normalize(number)
-        return _contacts.value.firstOrNull { normalize(it.number) == key }?.name.orEmpty()
+        val book = _contacts.value
+
+        book.firstOrNull { normalize(it.number) == key }?.let { return it }
+
+        val tail = key.takeLast(TAIL_DIGITS)
+        if (tail.length < TAIL_DIGITS) return null
+        return book.firstOrNull { normalize(it.number).endsWith(tail) }
     }
 
     fun totalUnread(): Int = _threads.value.sumOf { it.unread }
@@ -540,6 +592,7 @@ class RelayRepository private constructor(context: Context) {
     companion object {
         private const val TAG = "RelayRepository"
         private const val MAX_PER_THREAD = 500
+        private const val TAIL_DIGITS = 9
 
         @Volatile private var singleton: RelayRepository? = null
 
