@@ -110,6 +110,10 @@ jobs:
             echo "Using the google-services.json committed to the repo."
           else
             echo "::warning title=No Firebase config::Wake pushes disabled. Add the GOOGLE_SERVICES_JSON secret."
+            # Both package names are listed. The build type carries no
+            # applicationIdSuffix today, but if one is ever added back this
+            # placeholder keeps working instead of failing at
+            # processDebugGoogleServices with "no matching client".
             cat > app/google-services.json <<'JSON'
           {
             "project_info": {
@@ -122,6 +126,15 @@ jobs:
                 "client_info": {
                   "mobilesdk_app_id": "1:000000000000:android:0000000000000000000000",
                   "android_client_info": { "package_name": "com.relay.app" }
+                },
+                "oauth_client": [],
+                "api_key": [ { "current_key": "AIzaSyPLACEHOLDER0000000000000000000000000" } ],
+                "services": { "appinvite_service": { "other_platform_oauth_client": [] } }
+              },
+              {
+                "client_info": {
+                  "mobilesdk_app_id": "1:000000000000:android:0000000000000000000001",
+                  "android_client_info": { "package_name": "com.relay.app.debug" }
                 },
                 "oauth_client": [],
                 "api_key": [ { "current_key": "AIzaSyPLACEHOLDER0000000000000000000000000" } ],

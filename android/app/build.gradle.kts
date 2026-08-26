@@ -65,7 +65,14 @@ android {
             signingConfig = signingConfigs.findByName("release")
         }
         debug {
-            applicationIdSuffix = ".debug"
+            // Deliberately NO applicationIdSuffix.
+            //
+            // A ".debug" suffix would change the package to com.relay.app.debug,
+            // which then has to be registered separately in Firebase or
+            // `processDebugGoogleServices` fails outright. It would also mean a
+            // debug install and a release install are two different apps that
+            // cannot upgrade over each other — on a bridge where both phones
+            // must run the *same* build, that is a trap, not a convenience.
             versionNameSuffix = "-debug"
         }
     }
