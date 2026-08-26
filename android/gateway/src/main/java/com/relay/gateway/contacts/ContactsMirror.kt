@@ -11,6 +11,7 @@ import com.relay.core.model.Contact
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.ByteArrayOutputStream
+import kotlinx.serialization.encodeToString
 
 /**
  * Reads the SIM device's contacts so the client can render real names and

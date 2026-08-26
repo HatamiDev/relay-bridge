@@ -10,6 +10,7 @@ import javax.crypto.Cipher
 import javax.crypto.Mac
 import javax.crypto.spec.GCMParameterSpec
 import javax.crypto.spec.SecretKeySpec
+import kotlinx.serialization.encodeToString
 
 /**
  * Agent 5 — end-to-end encryption.

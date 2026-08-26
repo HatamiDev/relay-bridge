@@ -11,6 +11,7 @@ import java.security.spec.X509EncodedKeySpec
 import javax.crypto.KeyAgreement as JceKeyAgreement
 import javax.crypto.Mac
 import javax.crypto.spec.SecretKeySpec
+import kotlinx.serialization.encodeToString
 
 /**
  * Agent 5 — pairing key agreement.

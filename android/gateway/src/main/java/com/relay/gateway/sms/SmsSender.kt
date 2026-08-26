@@ -12,6 +12,7 @@ import com.relay.core.model.SmsOutboundRequest
 import com.relay.core.model.SmsState
 import com.relay.core.model.SmsStatusUpdate
 import com.relay.gateway.service.RelayForegroundService
+import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 
 /**

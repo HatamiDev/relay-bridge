@@ -18,6 +18,7 @@ import com.relay.core.model.RtcIce
 import com.relay.core.model.RtcSdp
 import com.relay.core.net.SignalingClient
 import com.relay.core.webrtc.WebRtcEngine
+import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import org.webrtc.AudioTrack
 import org.webrtc.PeerConnection

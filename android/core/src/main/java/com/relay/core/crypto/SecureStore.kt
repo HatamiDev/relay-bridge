@@ -11,6 +11,7 @@ import androidx.security.crypto.MasterKey
 import com.relay.core.model.DeviceRole
 import com.relay.core.model.PairedPeer
 import kotlinx.serialization.builtins.ListSerializer
+import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import java.security.KeyStore
 import javax.crypto.Cipher
