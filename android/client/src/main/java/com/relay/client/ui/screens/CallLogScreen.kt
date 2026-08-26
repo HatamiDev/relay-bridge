@@ -1,6 +1,7 @@
 package com.relay.client.ui.screens
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -10,44 +11,51 @@ import androidx.compose.material.icons.automirrored.rounded.CallMade
 import androidx.compose.material.icons.automirrored.rounded.CallMissed
 import androidx.compose.material.icons.automirrored.rounded.CallReceived
 import androidx.compose.material.icons.rounded.Call
+import androidx.compose.material.icons.rounded.Dialpad
+import androidx.compose.material.icons.rounded.Person
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.relay.client.data.CallLog
 import com.relay.client.data.CallLogStore
 import com.relay.client.data.RelayRepository
 import com.relay.client.ui.call.CallActivity
-import com.relay.client.ui.components.CircleIconButton
-import com.relay.client.ui.components.DockSpacer
-import com.relay.client.ui.components.GlassSurface
-import com.relay.client.ui.components.formatRelative
-import androidx.compose.foundation.layout.Box
-import androidx.compose.material.icons.rounded.Dialpad
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FloatingActionButton
-import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
 import com.relay.client.ui.components.Dialpad
 import com.relay.client.ui.theme.Glass
+import com.relay.client.util.initials
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 /**
- * Agent 4 — relayed call history.
+ * Relayed call history, laid out to the kit's `Calls > Call Logs` frame.
  *
  * Only calls that passed through this bridge appear here. The gateway's own
- * native call log is intentionally not mirrored: it would include calls the user
- * took on the gateway handset directly, and presenting those as "your calls" on
- * a device that never rang would be misleading.
+ * native call log is deliberately not mirrored: it would include calls taken
+ * on the gateway handset directly, and presenting those as "your calls" on a
+ * device that never rang would be a lie.
+ *
+ * Numbers from Figma node 13057:134782:
+ *   row 72dp · padding 16dp · avatar 48dp circle · gap 12dp
+ *   name Medium 16 (error red when missed) · direction icon 16dp + timestamp
+ *   Regular 14 on line two · trailing 24dp call action · no dividers
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -65,73 +73,89 @@ fun CallLogScreen(repository: RelayRepository, modifier: Modifier = Modifier) {
     var dialpadOpen by rememberSaveable { mutableStateOf(false) }
     var dialled by rememberSaveable { mutableStateOf("") }
 
-    fun place(number: String) {
+    fun place(number: String, displayName: String = number) {
         val target = number.trim()
         if (target.isEmpty()) return
         val callId = repository.placeCall(target)
         context.startActivity(
-            CallActivity.outgoingIntent(context, callId, target, target),
+            CallActivity.outgoingIntent(context, callId, target, displayName),
         )
     }
 
-    Box(modifier.fillMaxSize()) {
+    Box(modifier.fillMaxSize().background(colors.canvasRaised)) {
 
-    LazyColumn(
-        modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(top = 56.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        item(key = "header") {
-            Text(
-                "Calls",
-                color = colors.textPrimary,
-                fontSize = 30.sp,
-                fontWeight = FontWeight.Bold,
-                letterSpacing = (-0.6).sp,
-                modifier = Modifier.padding(horizontal = dimens.screenPadding, vertical = 4.dp),
-            )
-        }
+        Column(Modifier.fillMaxSize()) {
 
-        if (entries.isEmpty()) {
-            item(key = "empty") {
-                GlassSurface(
+            // ── App bar ──────────────────────────────────────────────────────
+            Column(
+                Modifier
+                    .fillMaxWidth()
+                    .background(colors.canvasRaised)
+                    .statusBarsPadding(),
+            ) {
+                Row(
                     Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = dimens.screenPadding, vertical = 30.dp),
+                        .height(64.dp)
+                        .padding(horizontal = 16.dp),
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Text(
-                        "No relayed calls yet. Incoming cellular calls on the gateway " +
-                            "will ring here.",
-                        color = colors.textTertiary,
-                        fontSize = 13.sp,
-                        modifier = Modifier.padding(24.dp),
+                        "Calls",
+                        color = colors.textPrimary,
+                        fontSize = 24.sp,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
                     )
                 }
-            }
-        } else {
-            items(entries, key = { it.id }) { entry ->
-                CallLogRow(
-                    entry = entry,
-                    displayName = repository.displayNameFor(entry.number).ifEmpty { entry.number },
-                    modifier = Modifier.padding(horizontal = dimens.screenPadding),
-                    onCallBack = {
-                        val callId = repository.placeCall(entry.number)
-                        context.startActivity(
-                            CallActivity.outgoingIntent(
-                                context, callId, entry.number,
-                                repository.displayNameFor(entry.number),
-                            ),
-                        )
-                    },
+                Box(
+                    Modifier
+                        .fillMaxWidth()
+                        .height(1.dp)
+                        .background(colors.glassBorder),
                 )
+            }
+
+            // ── List ─────────────────────────────────────────────────────────
+            if (entries.isEmpty()) {
+                Column(
+                    Modifier.fillMaxSize().padding(horizontal = 32.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center,
+                ) {
+                    Text(
+                        "No calls yet",
+                        color = colors.textPrimary,
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Medium,
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        "Calls relayed through the sender appear here.",
+                        color = colors.textSecondary,
+                        fontSize = 14.sp,
+                    )
+                }
+            } else {
+                LazyColumn(
+                    Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(bottom = dimens.dockHeight + 88.dp),
+                ) {
+                    items(entries, key = { it.id }) { entry ->
+                        val name = repository.displayNameFor(entry.number)
+                            .ifEmpty { entry.number }
+                        CallLogRow(
+                            entry = entry,
+                            displayName = name,
+                            onCallBack = { place(entry.number, name) },
+                        )
+                    }
+                }
             }
         }
 
-        // The dock floats over the list, so the last row needs somewhere to go.
-        item(key = "dock-gap") { DockSpacer() }
-    }
-
-        // ── Keypad FAB ───────────────────────────────────────────────────────
+        // ── Keypad ───────────────────────────────────────────────────────────
         FloatingActionButton(
             onClick = { dialpadOpen = true },
             containerColor = colors.accent,
@@ -168,6 +192,10 @@ fun CallLogScreen(repository: RelayRepository, modifier: Modifier = Modifier) {
     }
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Row
+// ─────────────────────────────────────────────────────────────────────────────
+
 @Composable
 private fun CallLogRow(
     entry: CallLog,
@@ -177,70 +205,118 @@ private fun CallLogRow(
 ) {
     val colors = Glass.colors
 
-    val (icon, tint) = when {
-        entry.missed -> Icons.AutoMirrored.Rounded.CallMissed to colors.danger
-        entry.inbound -> Icons.AutoMirrored.Rounded.CallReceived to colors.success
-        else -> Icons.AutoMirrored.Rounded.CallMade to colors.accent
+    // The kit draws in and out with the same green and reserves red for missed,
+    // so colour answers "did I lose this call?" and the arrow answers "which
+    // way did it go?" — two questions, two channels, neither overloaded.
+    val (directionIcon, directionTint, directionLabel) = when {
+        entry.missed -> Triple(
+            Icons.AutoMirrored.Rounded.CallMissed, MISSED_ARROW, "Missed call",
+        )
+        entry.inbound -> Triple(
+            Icons.AutoMirrored.Rounded.CallReceived, CONNECTED_ARROW, "Incoming call",
+        )
+        else -> Triple(
+            Icons.AutoMirrored.Rounded.CallMade, CONNECTED_ARROW, "Outgoing call",
+        )
     }
 
-    GlassSurface(modifier.fillMaxWidth()) {
-        Row(
-            Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Box(
-                Modifier.size(38.dp).clip(CircleShape).background(tint.copy(alpha = 0.14f)),
-                contentAlignment = Alignment.Center,
+    Row(
+        modifier
+            .fillMaxWidth()
+            .height(72.dp)
+            .background(colors.canvasRaised)
+            .clickable(onClick = onCallBack)
+            .padding(horizontal = 16.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        CallAvatar(displayName)
+
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text(
+                displayName,
+                // Red only on the name. The kit leaves the timestamp grey, so a
+                // missed call reads as one red mark in the row rather than a
+                // red row, and a screen of missed calls stays scannable.
+                color = if (entry.missed) colors.danger else colors.textPrimary,
+                fontSize = 16.sp,
+                fontWeight = FontWeight.Medium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
             ) {
-                Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(17.dp))
-            }
-
-            Spacer(Modifier.width(12.dp))
-
-            Column(Modifier.weight(1f)) {
-                Text(
-                    displayName,
-                    color = if (entry.missed) colors.danger else colors.textPrimary,
-                    fontSize = 15.sp,
-                    fontWeight = FontWeight.Medium,
+                Icon(
+                    directionIcon,
+                    contentDescription = directionLabel,
+                    tint = directionTint,
+                    modifier = Modifier.size(16.dp),
                 )
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        formatRelative(entry.startedAt),
-                        color = colors.textTertiary,
-                        fontSize = 11.5.sp,
-                    )
-                    if (entry.durationMs > 0) {
-                        Text(" · ", color = colors.textTertiary, fontSize = 11.5.sp)
-                        Text(
-                            formatCallDuration(entry.durationMs),
-                            color = colors.textTertiary,
-                            fontSize = 11.5.sp,
-                        )
-                    }
-                    if (entry.audioMode.isNotEmpty()) {
-                        Text(" · ", color = colors.textTertiary, fontSize = 11.5.sp)
-                        Text(entry.audioMode, color = colors.textTertiary, fontSize = 11.5.sp)
-                    }
-                }
+                Text(
+                    stampFormat.format(Date(entry.startedAt)) +
+                        if (entry.durationMs > 0) " · ${formatDuration(entry.durationMs)}" else "",
+                    color = colors.textSecondary,
+                    fontSize = 14.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
             }
+        }
 
-            CircleIconButton(
-                icon = Icons.Rounded.Call,
-                contentDescription = "Call $displayName back",
-                tint = colors.success,
-                background = colors.success.copy(alpha = 0.15f),
-                onClick = onCallBack,
+        Icon(
+            Icons.Rounded.Call,
+            contentDescription = "Call $displayName back",
+            tint = colors.textPrimary,
+            modifier = Modifier.size(24.dp),
+        )
+    }
+}
+
+@Composable
+private fun CallAvatar(name: String) {
+    val colors = Glass.colors
+    val letters = name.initials()
+
+    Box(
+        Modifier
+            .size(48.dp)
+            .clip(CircleShape)
+            .background(colors.auroraTeal),   // Extended Primary 500 · #3E3180
+        contentAlignment = Alignment.Center,
+    ) {
+        if (letters.isNotEmpty()) {
+            Text(
+                letters,
+                color = colors.textPrimary,
+                fontSize = 20.sp,
+                fontWeight = FontWeight.Bold,
+            )
+        } else {
+            Icon(
+                Icons.Rounded.Person,
+                contentDescription = null,
+                tint = colors.textPrimary.copy(alpha = 0.72f),
+                modifier = Modifier.size(26.dp),
             )
         }
     }
 }
 
-private fun formatCallDuration(ms: Long): String {
-    val seconds = ms / 1000
-    return when {
-        seconds < 60 -> "${seconds}s"
-        seconds < 3600 -> "${seconds / 60}m ${seconds % 60}s"
-        else -> "${seconds / 3600}h ${(seconds % 3600) / 60}m"
-    }
+// ── Direction arrow colours ──────────────────────────────────────────────────
+//
+// Taken from the exported icon assets rather than from the colour variables:
+// the kit ships the arrows as flat SVGs with these fills baked in, and they are
+// deliberately a shade off the semantic success/error tokens.
+private val CONNECTED_ARROW = Color(0xFF09C26F)
+private val MISSED_ARROW = Color(0xFFF44649)
+
+private val stampFormat = SimpleDateFormat("d MMMM, h:mm a", Locale.getDefault())
+
+private fun formatDuration(ms: Long): String {
+    val total = ms / 1000
+    val minutes = total / 60
+    val seconds = total % 60
+    return if (minutes > 0) "${minutes}m ${seconds}s" else "${seconds}s"
 }
