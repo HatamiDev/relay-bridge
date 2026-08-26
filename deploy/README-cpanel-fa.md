@@ -7,15 +7,20 @@ cPanel دو حالت کاملاً متفاوت دارد و قدم‌ها در ه
 
 ## قدم ۰ — کدام حالت را دارید؟ (۳۰ ثانیه)
 
-وارد cPanel شوید و در کادر جستجوی بالای صفحه بنویسید **Terminal**.
+**وجود Terminal ملاک نیست.** cPanel به اکانت‌های اشتراکی هم Terminal می‌دهد،
+منتها یک شل محدود (jailed) بدون root. تست درست این است — در
+**cPanel → Advanced → Terminal** بزنید:
 
-* **اگر آیکون Terminal ظاهر شد** (یا به WHM دسترسی دارید، یعنی
-  `hatamidev.com:2087`) → **مسیر A**. سرور شما VPS است و root دارید. همه‌چیز
-  کامل نصب می‌شود.
-* **اگر ظاهر نشد** → **مسیر B**. هاست اشتراکی است.
+```bash
+command -v sudo && id
+```
 
-> اگر Terminal را نمی‌بینید ولی مطمئن نیستید، از پشتیبانی هاست بپرسید:
-> «آیا SSH با دسترسی root دارم؟» جوابشان مسیر را تعیین می‌کند.
+* **اگر مسیر sudo چاپ شد و در خروجی `id` گروه wheel یا uid=0 دیدید** →
+  **مسیر A**. root دارید.
+* **اگر `sudo` چیزی چاپ نکرد** (یا `sudo: command not found` گرفتید) →
+  **مسیر B**. هاست اشتراکی است، هرچند شل دارید.
+
+دسترسی به WHM روی `hatamidev.com:2087` هم نشانهٔ مسیر A است.
 
 ---
 
@@ -85,19 +90,42 @@ sudo bash deploy/set-secrets.sh
 
 ## قدم ۳ — آوردن کد روی هاست
 
-**cPanel → Files → Git™ Version Control → Create**
+ریپو **private** است، و GitHub از سال ۲۰۲۱ احراز هویت با رمز عبور را برای
+Git بسته است. یعنی `git clone` با یوزرنیم/پسورد شکست می‌خورد:
 
-* Clone URL: `https://github.com/HatamiDev/relay-bridge.git`
-* Repository Path: `repositories/relay-bridge`
-* Create
+```
+remote: Invalid username or token. Password authentication is not supported.
+```
 
-> ریپو private است. اگر Git از شما احراز هویت خواست و پنل جایی برای وارد کردن
-> آن نداشت، ساده‌ترین راه این است: پوشهٔ `server/` را از کامپیوتر خودتان
-> ZIP کنید و با **File Manager → Upload** بالا بفرستید و همان‌جا Extract کنید.
-> فقط پوشهٔ `server/` لازم است، بقیهٔ ریپو روی هاست کاربردی ندارد.
+دو راه دارید.
 
-مقصد نهایی: `/home/USER/relay-app/` که داخلش `server.js`، `package.json` و
-پوشهٔ `src/` باشد.
+### راه ۱ (ساده‌تر) — آپلود مستقیم
+
+فایل `relay-app-upload.zip` را که برایتان ساخته شده بردارید. داخلش پوشهٔ
+`relay-app` است با کد سرور و یک `.env` که رمزهایش از قبل تولید شده.
+
+**cPanel → Files → File Manager** → مطمئن شوید در `/home/USER` هستید →
+**Upload** → فایل zip → برگردید → روی فایل راست‌کلیک → **Extract**.
+
+نتیجه: `/home/USER/relay-app/` با `server.js` و `package.json` و `src/`
+داخلش. قدم ۴ را رد کنید، `.env` از قبل آماده است.
+
+> `.env` جزو فایل‌های مخفی است. برای دیدنش در File Manager →
+> **Settings** (بالا راست) → تیک **Show Hidden Files (dotfiles)**.
+
+### راه ۲ — با توکن GitHub (اگر بعداً `git pull` می‌خواهید)
+
+در GitHub: **Settings → Developer settings → Personal access tokens →
+Fine-grained tokens → Generate new token**. فقط به همین ریپو دسترسی بدهید،
+با مجوز **Contents: Read-only**. توکن را کپی کنید و در Terminal هاست:
+
+```bash
+git clone https://<TOKEN>@github.com/HatamiDev/relay-bridge.git
+cp -r relay-bridge/server ~/relay-app
+```
+
+توکن بعد از clone داخل `.git/config` ذخیره می‌شود، پس اگر ریپو را روی هاست
+نگه می‌دارید، توکن را فقط read-only و محدود به همین ریپو بسازید.
 
 ## قدم ۴ — ساخت فایل .env
 

@@ -3,6 +3,15 @@
 # either one in a public repo means anyone can impersonate your build.
 server/.env
 server/secrets/
+# Deployment bundles carry a filled-in .env. They are built to be handed to a
+# host by hand, never to be tracked — a `git add -A` will otherwise sweep the
+# live JWT and bootstrap secrets straight into the history.
+relay-app-upload.zip
+BOOTSTRAP_SECRET.txt
+dist/apk/
+dist/*.zip
+*.part
+*.part.id
 android/google-services.json
 android/app/google-services.json
 *.jks
