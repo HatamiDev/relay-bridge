@@ -207,7 +207,19 @@ class RelayForegroundService : Service() {
                     // TURN credentials live one hour; refresh well inside that.
                     if (ticks % 60 == 0) client.refreshIceServers()
                 } else {
-                    client?.connect()
+                    // The service-level connect(), not `client?.connect()`.
+                    //
+                    // When the service starts before the first receiver has
+                    // joined, connect() bails out at the `isPaired` check and
+                    // leaves `signaling` null. `client?.connect()` is then a
+                    // no-op on null and this loop spins every 30s doing nothing
+                    // for the life of the process — the gateway sits on the
+                    // pairing screen forever even after a receiver is
+                    // confirmed. Calling connect() re-reads `isPaired` and
+                    // builds the client once pairing has actually completed,
+                    // so the gateway self-heals within one heartbeat from any
+                    // path that left it idle.
+                    connect()
                 }
                 ticks++
                 delay(HEARTBEAT_INTERVAL_MS)
@@ -482,6 +494,26 @@ class RelayForegroundService : Service() {
 
         fun start(context: Context) {
             val intent = Intent(context, RelayForegroundService::class.java)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                context.startForegroundService(intent)
+            } else {
+                context.startService(intent)
+            }
+        }
+
+        /**
+         * Ask a running service to re-evaluate pairing and open its socket.
+         *
+         * [start] alone is not enough once the service exists: a plain start
+         * re-enters `onStartCommand` with no action, which does not call
+         * `connect()`. Only `onCreate` connects unconditionally, and that runs
+         * once. This carries the action that the `ACTION_RECONNECT` branch
+         * handles, so it works whether the service is already up or is being
+         * created by this very call.
+         */
+        fun reconnect(context: Context) {
+            val intent = Intent(context, RelayForegroundService::class.java)
+                .setAction(ACTION_RECONNECT)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 context.startForegroundService(intent)
             } else {

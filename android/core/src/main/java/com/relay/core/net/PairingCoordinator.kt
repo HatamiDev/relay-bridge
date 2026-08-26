@@ -185,18 +185,31 @@ class PairingCoordinator(
         }
     }
 
-    /** Poll until at least one receiver appears or the code expires. */
+    /**
+     * Poll until at least one receiver appears, or the code expires.
+     *
+     * Stops on the first join. It used to keep polling for the whole TTL after
+     * a receiver had already been derived, which blocked the caller's coroutine
+     * for minutes — the gateway's pairing screen stayed "busy" and never moved
+     * on — while re-fetching a result that could no longer change.
+     *
+     * The deadline is wall-clock rather than a counter decremented by
+     * `POLL_INTERVAL_MS / 1000`: that was integer division on 1500/1000 = 1, so
+     * it subtracted one second per 1.5-second iteration and ran 50% longer than
+     * the TTL it was given.
+     */
     suspend fun awaitJoins(
         ttlSeconds: Int,
         onUpdate: (List<DerivedPeer>) -> Unit,
     ) {
-        var remaining = ttlSeconds
-        while (remaining > 0) {
+        val deadline = System.currentTimeMillis() + ttlSeconds * 1000L
+        while (System.currentTimeMillis() < deadline) {
             delay(POLL_INTERVAL_MS)
-            remaining -= (POLL_INTERVAL_MS / 1000).toInt()
-
             val derived = pollForJoins().getOrNull().orEmpty()
-            if (derived.isNotEmpty()) onUpdate(derived)
+            if (derived.isNotEmpty()) {
+                onUpdate(derived)
+                return
+            }
         }
     }
 

@@ -302,6 +302,16 @@ private fun GatewayScreen() {
                             onConfirm = {
                                 scope.launch {
                                     coordinator.confirmReceiver(peer.deviceId)
+                                    // Confirming is the moment this device
+                                    // stops being "a phone showing a QR code"
+                                    // and becomes a paired gateway. The
+                                    // foreground service was started earlier,
+                                    // before any peer existed, so its connect()
+                                    // bailed out on `isPaired` and left the
+                                    // socket closed. Nothing else ever asked it
+                                    // to try again. Poke it now that a root key
+                                    // is on disk and `isPaired` is finally true.
+                                    RelayForegroundService.reconnect(context)
                                     status = "${peer.label} confirmed."
                                 }
                             },

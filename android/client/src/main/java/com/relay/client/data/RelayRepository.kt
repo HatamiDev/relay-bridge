@@ -29,6 +29,7 @@ import com.relay.core.net.RelayEvent
 import com.relay.core.net.SignalingClient
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -65,6 +66,9 @@ class RelayRepository private constructor(context: Context) {
     private val cache = MessageCache(appContext)
 
     private var signaling: SignalingClient? = null
+
+    /** True from the moment a connect starts until it settles either way. */
+    @Volatile private var connecting = false
 
     // ── Observable state ─────────────────────────────────────────────────────
 
@@ -108,12 +112,42 @@ class RelayRepository private constructor(context: Context) {
     // Lifecycle
     // ─────────────────────────────────────────────────────────────────────────
 
+    /**
+     * Jobs collecting from the current [signaling] client.
+     *
+     * Held so they can be cancelled when the client is replaced. Without this,
+     * every superseded client leaves four live collectors writing into the same
+     * StateFlows, and the connection indicator flaps between the dead client's
+     * RECONNECTING and the live one's CONNECTED forever.
+     */
+    private val clientJobs = mutableListOf<Job>()
+
+    /**
+     * Open the relay socket, or do nothing if one is already open or opening.
+     *
+     * `@Synchronized` and the `connecting` flag are both load-bearing. This is
+     * called from at least nine places — service create/start, the 30s
+     * heartbeat, FCM wakes, the pairing screen, the receiver Activity's
+     * LaunchedEffect, the Settings reconnect button, and every failed send —
+     * and several of them fire within milliseconds of each other during
+     * pairing.
+     *
+     * The old guard tested `isConnected`, which is false for the entire
+     * duration of the TCP+TLS+handshake round trip. Any second call in that
+     * window built a *second* socket, and the previous one was never
+     * disconnected — it kept its own infinite reconnect loop with no reference
+     * left to stop it. The server evicts older sockets for the same device, so
+     * each duplicate killed its predecessor, which immediately reconnected and
+     * killed its successor: a self-sustaining connect/evict/reconnect storm
+     * that never converges.
+     */
+    @Synchronized
     fun connect() {
         if (!secureStore.isPaired) {
             Log.w(TAG, "not paired")
             return
         }
-        if (signaling?.isConnected == true) return
+        if (connecting || signaling?.isConnected == true) return
 
         val boxes = secureStore.allCryptoBoxes()
         if (boxes.isEmpty()) {
@@ -121,6 +155,11 @@ class RelayRepository private constructor(context: Context) {
             return
         }
 
+        // Tear the previous client down before replacing it. Overwriting the
+        // field alone orphans a fully-wired socket that reconnects forever.
+        teardownClient()
+
+        connecting = true
         val client = SignalingClient(
             serverUrl = secureStore.serverUrl,
             authToken = secureStore.authToken,
@@ -130,25 +169,44 @@ class RelayRepository private constructor(context: Context) {
         client.setBoxes(boxes)
         signaling = client
 
-        scope.launch { client.events.collect(::onEvent) }
-        scope.launch { client.connectionState.collect { _connection.value = it } }
+        clientJobs += scope.launch { client.events.collect(::onEvent) }
+        clientJobs += scope.launch {
+            client.connectionState.collect { state ->
+                _connection.value = state
+                // Clear the flag on any terminal outcome, not just success:
+                // a failed connect must not leave `connecting` stuck true, or
+                // no later attempt would ever be allowed through.
+                if (state != ConnectionState.CONNECTING) connecting = false
+            }
+        }
         // A receiver has exactly one peer — the gateway — so pick its entry
         // out of the presence map by role rather than by a known deviceId.
-        scope.launch {
+        clientJobs += scope.launch {
             client.presence.collect { byDevice ->
                 byDevice.values.firstOrNull { DeviceRole.fromWire(it.role) == DeviceRole.GATEWAY }
                     ?.let { _gatewayPresence.value = it }
             }
         }
-        scope.launch { client.iceServers.collect { if (it.isNotEmpty()) _iceServers.value = it } }
+        clientJobs += scope.launch {
+            client.iceServers.collect { if (it.isNotEmpty()) _iceServers.value = it }
+        }
 
         client.connect()
         secureStore.fcmToken.takeIf { it.isNotEmpty() }?.let(client::registerFcmToken)
     }
 
-    fun disconnect() {
+    /** Cancel this client's collectors and close its socket. Safe when null. */
+    private fun teardownClient() {
+        clientJobs.forEach { it.cancel() }
+        clientJobs.clear()
         signaling?.disconnect()
         signaling = null
+    }
+
+    @Synchronized
+    fun disconnect() {
+        teardownClient()
+        connecting = false
     }
 
     val isConnected: Boolean get() = signaling?.isConnected == true
@@ -346,6 +404,14 @@ class RelayRepository private constructor(context: Context) {
         signaling?.registerFcmToken(token)
     }
 
+    /**
+     * Send to the gateway, reconnecting if the socket is not up.
+     *
+     * `connect()` is now idempotent while a connection is in flight, so a burst
+     * of failed sends — which is exactly what happens on a cold start, when
+     * `session:ready` triggers a sync and a contacts request back to back —
+     * asks for one reconnect rather than one socket per send.
+     */
     private inline fun <reified T> emit(event: String, payload: T) {
         val body = json.encodeToString(payload)
         if (signaling?.sendToGateway(event, body) != true) {
