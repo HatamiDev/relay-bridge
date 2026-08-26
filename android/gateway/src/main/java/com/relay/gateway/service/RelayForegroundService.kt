@@ -201,7 +201,7 @@ class RelayForegroundService : Service() {
                         charging = SystemHealth.isCharging(this@RelayForegroundService),
                         signalDbm = 0,
                         simState = SystemHealth.simState(this@RelayForegroundService),
-                        appVersion = com.relay.gateway.BuildConfig.VERSION_NAME,
+                        appVersion = installedVersionName(),
                         model = android.os.Build.MODEL,
                     )
                     // TURN credentials live one hour; refresh well inside that.
@@ -434,6 +434,19 @@ class RelayForegroundService : Service() {
      * percent of battery per hour; the foreground service alone is enough to keep
      * the socket alive between calls.
      */
+    /**
+     * The installed app's version name, read from the package manager.
+     *
+     * Deliberately *not* `BuildConfig.VERSION_NAME`: this is a library module,
+     * and the Android Gradle plugin only emits VERSION_NAME into an
+     * *application* module's BuildConfig. Asking the package manager also has
+     * the nicer property of reporting what is actually installed rather than
+     * what this module happened to be compiled against.
+     */
+    private fun installedVersionName(): String = runCatching {
+        packageManager.getPackageInfo(packageName, 0).versionName.orEmpty()
+    }.getOrDefault("")
+
     private fun acquireWakeLock() {
         if (wakeLock?.isHeld == true) return
         wakeLock = getSystemService<PowerManager>()

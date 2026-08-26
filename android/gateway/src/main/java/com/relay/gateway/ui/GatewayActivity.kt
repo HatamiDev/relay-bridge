@@ -121,7 +121,9 @@ private fun GatewayScreen() {
     val dialerRole = rememberLauncherForActivityResult(
         ActivityResultContracts.StartActivityForResult(),
     ) { result ->
-        status = if (result.resultCode == ComponentActivity.RESULT_OK) {
+        // Activity.RESULT_OK, not ComponentActivity.RESULT_OK — Kotlin does not
+        // surface inherited Java statics through a subclass name.
+        status = if (result.resultCode == android.app.Activity.RESULT_OK) {
             "Dialer role granted — call relay is live."
         } else {
             "Dialer role declined. Messages will relay; calls will not."

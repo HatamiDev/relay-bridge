@@ -464,10 +464,21 @@ class CallBridgeController(
     private fun handleOf(call: Call): String =
         call.details?.handle?.schemeSpecificPart ?: "unknown"
 
+    /**
+     * Is this an emergency call?
+     *
+     * The modern check hangs off `TelephonyManager`, not `TelecomManager` —
+     * an easy thing to get wrong, because `TelecomManager` is what owns the
+     * call object itself. It also needs READ_PHONE_STATE, which the user can
+     * revoke, so the whole thing is wrapped: any failure answers "not an
+     * emergency", which keeps the relay running rather than silently blocking
+     * ordinary calls on a permission hiccup.
+     */
     private fun isEmergency(call: Call): Boolean = runCatching {
         val number = handleOf(call)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            telecom?.isEmergencyNumber(number) == true
+            context.getSystemService<android.telephony.TelephonyManager>()
+                ?.isEmergencyNumber(number) == true
         } else {
             @Suppress("DEPRECATION")
             android.telephony.PhoneNumberUtils.isEmergencyNumber(number)
