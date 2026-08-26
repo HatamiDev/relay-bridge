@@ -1,0 +1,32 @@
+# ── Secrets — never commit these ─────────────────────────────────────────────
+# The bootstrap secret is compiled into the APK and the keystore signs it;
+# either one in a public repo means anyone can impersonate your build.
+server/.env
+server/secrets/
+android/google-services.json
+android/app/google-services.json
+*.jks
+*.keystore
+*.jks.b64
+local.properties
+
+# ── Build output ─────────────────────────────────────────────────────────────
+build/
+.gradle/
+out/
+node_modules/
+server/data/
+*.apk
+*.aab
+
+# ── Editors ──────────────────────────────────────────────────────────────────
+.idea/
+*.iml
+.vscode/
+.DS_Store
+Thumbs.db
+
+# ── Scratch ──────────────────────────────────────────────────────────────────
+*.log
+*.tmp
+server/.ws_smoke_test.js

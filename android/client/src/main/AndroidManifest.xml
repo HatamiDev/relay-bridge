@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Library manifest — merged into :app.
+
+    Declares only what the RECEIVER half needs. No <application android:name>,
+    no launcher activity, no icon: the single APK owns exactly one of each and
+    they live in :app.
+
+    Notably absent: every SMS and telephony permission. A receiver never touches
+    a radio — it only plays and captures Opus over WebRTC.
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
+    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-permission android:name="android.permission.VIBRATE" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+
+    <uses-feature android:name="android.hardware.camera.any" android:required="false" />
+
+    <application>
+
+        <!-- The receiver's main surface. Launched by the role router in :app. -->
+        <activity
+            android:name=".ReceiverActivity"
+            android:exported="false"
+            android:launchMode="singleTask"
+            android:windowSoftInputMode="adjustResize" />
+
+        <!-- Full-screen incoming call. showWhenLocked + turnScreenOn are what
+             make a relayed call behave like a real one on the lock screen. -->
+        <activity
+            android:name=".ui.call.CallActivity"
+            android:exported="false"
+            android:launchMode="singleInstance"
+            android:excludeFromRecents="true"
+            android:showWhenLocked="true"
+            android:turnScreenOn="true"
+            android:theme="@style/Theme.RelayClient.Call" />
+
+        <service
+            android:name=".service.ClientRelayService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync|microphone" />
+
+        <!-- Notification actions that must never open an Activity. -->
+        <receiver
+            android:name=".service.CallActionReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.relay.client.DECLINE_CALL" />
+                <action android:name="com.relay.client.HANGUP_CALL" />
+            </intent-filter>
+        </receiver>
+
+        <receiver
+            android:name=".service.ClientBootReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
+
+    </application>
+</manifest>

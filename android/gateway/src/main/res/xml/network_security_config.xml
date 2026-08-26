@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    TLS is mandatory for the signaling channel. Cleartext is disabled globally.
+
+    To test against a local server, temporarily add a debug-overrides block with
+    your machine's IP — never ship it. Certificate pinning is strongly
+    recommended once your relay host has a stable certificate: uncomment the
+    pin-set below and insert the base64 SPKI hash of your leaf or intermediate.
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="false">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+
+    <!--
+    <domain-config cleartextTrafficPermitted="false">
+        <domain includeSubdomains="true">hatamidev.com</domain>
+        <pin-set expiration="2027-01-01">
+            <pin digest="SHA-256">BASE64_SPKI_HASH_OF_YOUR_LEAF_CERT=</pin>
+            <pin digest="SHA-256">BASE64_SPKI_HASH_OF_YOUR_BACKUP_KEY=</pin>
+        </pin-set>
+    </domain-config>
+    -->
+</network-security-config>

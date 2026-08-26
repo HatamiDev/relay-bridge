@@ -1,0 +1,156 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Library manifest — merged into :app.
+
+    Declares only what the GATEWAY half needs. There is no <application
+    android:name>, no launcher activity and no icon here: the single APK owns
+    exactly one of each, and they live in :app.
+
+    Every component below ships on every install but stays inert unless the
+    role picker set this device to GATEWAY. The SMS receiver checks the role
+    before doing anything; the InCallService is never bound because the app only
+    requests ROLE_DIALER in the gateway role.
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <!-- ══ SMS relay ══════════════════════════════════════════════════════ -->
+    <uses-permission android:name="android.permission.RECEIVE_SMS" />
+    <uses-permission android:name="android.permission.SEND_SMS" />
+    <uses-permission android:name="android.permission.READ_SMS" />
+    <uses-permission android:name="android.permission.RECEIVE_MMS" />
+
+    <!-- ══ Call interception ══════════════════════════════════════════════
+         InCallService binding additionally requires the ROLE_DIALER role,
+         granted at runtime. Permissions alone are not enough. -->
+    <uses-permission android:name="android.permission.READ_PHONE_STATE" />
+    <uses-permission android:name="android.permission.READ_PHONE_NUMBERS" />
+    <uses-permission android:name="android.permission.CALL_PHONE" />
+    <uses-permission android:name="android.permission.ANSWER_PHONE_CALLS" />
+    <uses-permission android:name="android.permission.MANAGE_OWN_CALLS" />
+    <uses-permission android:name="android.permission.READ_CALL_LOG" />
+
+    <!-- ══ Audio bridge ═══════════════════════════════════════════════════ -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
+    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
+    <!-- Privileged: only granted to system/OEM-signed installs. Declared so a
+         privileged install can capture true VOICE_CALL audio; ordinary installs
+         silently fall back to a loopback strategy (see CallAudioBridge). -->
+    <uses-permission
+        android:name="android.permission.CAPTURE_AUDIO_OUTPUT"
+        tools:ignore="ProtectedPermissions" />
+
+    <!-- ══ Contact mirroring ══════════════════════════════════════════════ -->
+    <uses-permission android:name="android.permission.READ_CONTACTS" />
+
+    <!-- ══ Survival ═══════════════════════════════════════════════════════ -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_PHONE_CALL" />
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <!-- Telephony is required=false: the same APK installs on a SIM-less
+         receiver, which simply never offers the gateway role. -->
+    <uses-feature android:name="android.hardware.telephony" android:required="false" />
+
+    <application>
+
+        <!-- Gateway setup / pairing screen. Reached from the role picker. -->
+        <activity
+            android:name=".ui.GatewayActivity"
+            android:exported="false"
+            android:launchMode="singleTask"
+            android:screenOrientation="portrait" />
+
+        <!-- ══ Foreground relay service ═══════════════════════════════════
+             dataSync keeps the socket alive; microphone + phoneCall types are
+             required from Android 14 whenever the audio bridge is running. -->
+        <service
+            android:name=".service.RelayForegroundService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync|microphone|phoneCall" />
+
+        <!-- ══ SMS interception ═══════════════════════════════════════════
+             Priority 999 is the maximum honoured for SMS_RECEIVED. We do NOT
+             abortBroadcast(): the stock Messages app must keep storing the
+             message so the SMS provider stays authoritative. -->
+        <receiver
+            android:name=".sms.SmsBroadcastReceiver"
+            android:exported="true"
+            android:permission="android.permission.BROADCAST_SMS">
+            <intent-filter android:priority="999">
+                <action android:name="android.provider.Telephony.SMS_RECEIVED" />
+            </intent-filter>
+        </receiver>
+
+        <receiver
+            android:name=".sms.SmsResultReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.relay.gateway.SMS_SENT" />
+                <action android:name="com.relay.gateway.SMS_DELIVERED" />
+            </intent-filter>
+        </receiver>
+
+        <!-- ══ Call interception ══════════════════════════════════════════
+             IN_CALL_SERVICE_UI=false: we never draw the dialer UI, so the
+             gateway handset keeps its stock in-call screen and stays a usable
+             phone. We only tap the Call objects. -->
+        <service
+            android:name=".call.RelayInCallService"
+            android:exported="true"
+            android:permission="android.permission.BIND_INCALL_SERVICE">
+            <meta-data
+                android:name="android.telecom.IN_CALL_SERVICE_UI"
+                android:value="false" />
+            <meta-data
+                android:name="android.telecom.INCLUDE_EXTERNAL_CALLS"
+                android:value="false" />
+            <meta-data
+                android:name="android.telecom.IN_CALL_SERVICE_RINGING"
+                android:value="false" />
+            <intent-filter>
+                <action android:name="android.telecom.InCallService" />
+            </intent-filter>
+        </service>
+
+        <!-- Required for ROLE_DIALER eligibility: the OS only offers the role
+             to apps that can also handle DIAL intents. -->
+        <activity
+            android:name=".call.DialerStubActivity"
+            android:exported="true"
+            android:theme="@android:style/Theme.NoDisplay">
+            <intent-filter>
+                <action android:name="android.intent.action.DIAL" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.DIAL" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:scheme="tel" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.CALL_BUTTON" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity>
+
+        <!-- ══ Boot / update restart ══════════════════════════════════════ -->
+        <receiver
+            android:name=".service.BootReceiver"
+            android:exported="true"
+            android:directBootAware="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.LOCKED_BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
+
+    </application>
+</manifest>

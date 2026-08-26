@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- One APK, one name, whichever role it is running as. -->
+    <string name="app_name">Relay</string>
+    <string name="role_sender">Sender</string>
+    <string name="role_receiver">Receiver</string>
+</resources>

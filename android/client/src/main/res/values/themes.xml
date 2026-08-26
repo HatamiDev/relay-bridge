@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+        Transparent system bars so the ambient orbs bleed edge to edge. The
+        window background is the canvas colour rather than transparent, which
+        stops a white flash during Activity transitions on One UI.
+    -->
+    <style name="Theme.RelayClient" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">#050811</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowLightNavigationBar">false</item>
+        <item name="android:windowDrawsSystemBarBackgrounds">true</item>
+        <item name="android:enforceNavigationBarContrast">false</item>
+        <item name="android:enforceStatusBarContrast">false</item>
+    </style>
+
+    <!-- Call surface: no animation on entry so a ring appears instantly. -->
+    <style name="Theme.RelayClient.Call" parent="Theme.RelayClient">
+        <item name="android:windowAnimationStyle">@null</item>
+        <item name="android:windowShowWallpaper">false</item>
+    </style>
+</resources>

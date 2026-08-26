@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Library strings only. `app_name` deliberately lives in :app — there is one
+    APK and therefore one name, and defining it twice in two libraries would
+    make which one wins depend on dependency order.
+-->
+<resources>
+    <string name="gateway_service_running">Relay active</string>
+    <string name="gateway_service_reconnecting">Relay reconnecting</string>
+</resources>

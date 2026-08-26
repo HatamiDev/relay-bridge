@@ -1,0 +1,215 @@
+name: Build APK
+
+# Produces the single installable APK that runs in either role.
+#
+# You install nothing. Push the repo, wait ~6 minutes, download the APK from the
+# run's Artifacts section, side-load the same file onto every phone.
+#
+# Configure at: Settings → Secrets and variables → Actions
+#
+#   Variable  RELAY_SERVER_URL        https://hatamidev.com     (defaults to this)
+#   Secret    RELAY_BOOTSTRAP_SECRET  must equal BOOTSTRAP_SECRET in the server .env
+#   Secret    GOOGLE_SERVICES_JSON    base64 -w0 google-services.json   (for FCM)
+#   Secret    KEYSTORE_BASE64         base64 -w0 release.jks            (for release)
+#   Secret    KEYSTORE_PASSWORD / KEY_ALIAS / KEY_PASSWORD
+#
+# With none of the optional secrets you still get a working debug APK.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      build_type:
+        description: Which variant to build
+        required: true
+        default: debug
+        type: choice
+        options: [debug, release]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-apk-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ── Backend first: it fails in ~40s, so a broken server never waits on the
+  #    six-minute Android toolchain to tell you about it. ──────────────────────
+  server:
+    name: Server check
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: server/package-lock.json
+
+      - name: Install
+        working-directory: server
+        # `npm ci` needs the committed lockfile and is reproducible; fall back to
+        # `install` so a lockfile drift does not block an APK build.
+        run: npm ci --no-audit --no-fund || npm install --no-audit --no-fund
+
+      - name: Syntax check every file
+        working-directory: server
+        run: |
+          find . -name '*.js' -not -path './node_modules/*' -print0 \
+            | xargs -0 -r -n1 node --check
+          echo "server OK"
+
+  build:
+    name: Android APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      # AGP 8.5 needs platform 35 and build-tools 35. Pinning them here means
+      # the build does not depend on whatever the runner image happens to ship.
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          packages: 'platforms;android-35 build-tools;35.0.0 platform-tools'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+          # libwebrtc alone is ~90 MB, so caching turns a 6-minute build into
+          # about 90 seconds on every run after the first.
+          cache-read-only: false
+
+      # ── Firebase config ───────────────────────────────────────────────────
+      # The google-services Gradle plugin refuses to configure without this
+      # file. When no secret is set we write a structurally valid placeholder so
+      # the build still produces an APK — FCM wake pushes just will not work.
+      - name: Provide google-services.json
+        working-directory: android
+        env:
+          GSJ: ${{ secrets.GOOGLE_SERVICES_JSON }}
+        run: |
+          set -euo pipefail
+          if [ -n "${GSJ:-}" ]; then
+            printf '%s' "$GSJ" | base64 -d > app/google-services.json
+            echo "Using google-services.json from secrets."
+          elif [ -f app/google-services.json ]; then
+            echo "Using the google-services.json committed to the repo."
+          else
+            echo "::warning title=No Firebase config::Wake pushes disabled. Add the GOOGLE_SERVICES_JSON secret."
+            cat > app/google-services.json <<'JSON'
+          {
+            "project_info": {
+              "project_number": "000000000000",
+              "project_id": "relay-placeholder",
+              "storage_bucket": "relay-placeholder.appspot.com"
+            },
+            "client": [
+              {
+                "client_info": {
+                  "mobilesdk_app_id": "1:000000000000:android:0000000000000000000000",
+                  "android_client_info": { "package_name": "com.relay.app" }
+                },
+                "oauth_client": [],
+                "api_key": [ { "current_key": "AIzaSyPLACEHOLDER0000000000000000000000000" } ],
+                "services": { "appinvite_service": { "other_platform_oauth_client": [] } }
+              }
+            ],
+            "configuration_version": "1"
+          }
+          JSON
+          fi
+          node -e "JSON.parse(require('fs').readFileSync('app/google-services.json'))" \
+            && echo "google-services.json parses."
+
+      # ── Signing ───────────────────────────────────────────────────────────
+      # `secrets` is not available in a step-level `if`, so the presence check
+      # has to happen inside the script via an env var.
+      - name: Decode release keystore
+        working-directory: android
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+        run: |
+          set -euo pipefail
+          if [ -n "${KEYSTORE_BASE64:-}" ]; then
+            printf '%s' "$KEYSTORE_BASE64" | base64 -d > release.jks
+            echo "Keystore restored ($(stat -c%s release.jks) bytes)."
+          else
+            echo "No keystore secret — this run will produce a debug APK."
+          fi
+
+      - name: Build
+        working-directory: android
+        env:
+          VARIANT: ${{ github.event.inputs.build_type || 'debug' }}
+          SERVER_URL: ${{ vars.RELAY_SERVER_URL || 'https://hatamidev.com' }}
+          BOOTSTRAP: ${{ secrets.RELAY_BOOTSTRAP_SECRET }}
+          KS_PASS: ${{ secrets.KEYSTORE_PASSWORD }}
+          KS_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KS_KEYPASS: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+
+          ARGS=(
+            "-PrelayServerUrl=${SERVER_URL}"
+            "-PrelayBootstrapSecret=${BOOTSTRAP:-}"
+            "--no-daemon"
+            "--stacktrace"
+          )
+
+          TARGET=":app:assembleDebug"
+          if [ "${VARIANT}" = "release" ] && [ -f release.jks ]; then
+            TARGET=":app:assembleRelease"
+            ARGS+=(
+              "-PrelayKeystore=${PWD}/release.jks"
+              "-PrelayKeystorePassword=${KS_PASS:-}"
+              "-PrelayKeyAlias=${KS_ALIAS:-}"
+              "-PrelayKeyPassword=${KS_KEYPASS:-}"
+            )
+          elif [ "${VARIANT}" = "release" ]; then
+            echo "::warning title=No keystore::Falling back to a debug build."
+          fi
+
+          echo "Building ${TARGET} against ${SERVER_URL}"
+          gradle "${TARGET}" "${ARGS[@]}"
+
+      - name: Collect APK
+        working-directory: android
+        run: |
+          set -euo pipefail
+          mkdir -p ../out
+          find app/build/outputs/apk -name '*.apk' -exec cp {} ../out/ \;
+          ls -lh ../out
+          test -n "$(ls -A ../out)" || { echo "::error::No APK produced"; exit 1; }
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: relay-apk-${{ github.run_number }}
+          path: out/*.apk
+          retention-days: 90
+          if-no-files-found: error
+
+      # A failed build is the expected outcome for the first run of a codebase
+      # that has never seen a compiler. Surfacing the Kotlin errors on their own
+      # saves scrolling through Gradle's configuration noise.
+      - name: Summarise failure
+        if: failure()
+        working-directory: android
+        run: |
+          echo "### Build failed" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "Copy the compiler errors above and send them back for a fix." >> "$GITHUB_STEP_SUMMARY"

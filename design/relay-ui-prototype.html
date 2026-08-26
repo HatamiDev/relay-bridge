@@ -1,0 +1,1305 @@
+<title>Relay UI Lab</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet" />
+
+<style>
+  /* ═══════════════════════════════════════════════════════════════════════════
+     AURORA GLASS — design tokens
+     These are the exact values GlassTheme.kt compiles into the APK. Every
+     slider in the left panel writes to one of them, so what you tune here is
+     literally what ships.
+     ═══════════════════════════════════════════════════════════════════════════ */
+  :root {
+    /* Aurora canvas — dark at the status bar, luminous teal at the thumb. */
+    --aur-0: #050a12;
+    --aur-1: #0a1c29;
+    --aur-2: #114054;
+    --aur-3: #1f7799;
+    --aur-4: #32a6cb;
+
+    /* Chat canvas — the inverse: teal behind the header, quiet under the text. */
+    --chat-0: #0c3040;
+    --chat-1: #0b1f2b;
+    --chat-2: #080d14;
+    --chat-3: #04060a;
+
+    --raised: #0b141f;
+
+    /* Two glass tones. Dark over the top band, white frost over the bright one. */
+    --glass-dark:   10 18 32;
+    --glass-dark-a: 0.62;
+    --glass-light-a: 0.14;
+    --glass-light-strong-a: 0.24;
+    --border-a: 0.14;
+    --sheen: 0.12;
+    --backdrop: 26px;
+
+    --bloom-cyan:   #35c8ec;
+    --bloom-indigo: #5b6be8;
+    --bloom-violet: #9b6bf0;
+    --bloom-a: 0.18;
+    --bloom-blur: 110px;
+
+    --accent:  #4cc7ee;
+    --heart:   #ff3b47;
+    --live:    #f4353f;
+    --success: #27d07e;
+    --warning: #ffc24b;
+    --danger:  #ff4d5e;
+
+    --t1: #ffffff;
+    --t2: #b7cbd6;
+    --t3: #7e96a3;
+    --on-light: #06202b;
+
+    --bub-in:  #16202b;
+    --bub-out: #1b2a3a;
+
+    --r-card: 28px;
+    --r-squircle: 24px;
+    --r-bubble: 22px;
+    --dock-h: 68px;
+    --rail-w: 56px;
+    --font-scale: 1;
+
+    /* Lab chrome — deliberately outside the app palette. */
+    --lab-bg: #0a0d13;
+    --lab-panel: #11151d;
+    --lab-line: #1c232e;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--lab-bg);
+    color: var(--t1);
+    font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  .mono { font-family: "JetBrains Mono", ui-monospace, Menlo, monospace; }
+
+  /* ── Lab shell ───────────────────────────────────────────────────────── */
+  .lab { display: grid; grid-template-columns: 316px 1fr; min-height: 100vh; }
+  @media (max-width: 940px) {
+    .lab { grid-template-columns: 1fr; }
+    .panel { position: static !important; height: auto !important;
+             border-right: none !important; border-bottom: 1px solid var(--lab-line); }
+  }
+
+  .panel {
+    position: sticky; top: 0; height: 100vh; overflow-y: auto;
+    background: var(--lab-panel); border-right: 1px solid var(--lab-line);
+    padding: 20px 18px 40px;
+  }
+  .panel h1 { font-size: 15px; font-weight: 700; margin: 0 0 2px; }
+  .panel .sub { font-size: 11.5px; color: var(--t3); margin: 0 0 18px; line-height: 1.55; }
+
+  .group { margin-bottom: 16px; }
+  .group > h2 {
+    font-size: 9.5px; text-transform: uppercase; letter-spacing: 1.1px;
+    color: var(--t3); margin: 0 0 8px; font-weight: 700;
+  }
+  .row { display: flex; align-items: center; gap: 10px; padding: 4px 0; }
+  .row label { font-size: 12px; color: var(--t2); flex: 1; }
+  .row output { font-size: 10.5px; color: var(--t3); min-width: 44px; text-align: right; }
+
+  input[type=range] {
+    -webkit-appearance: none; appearance: none; width: 112px; height: 3px;
+    border-radius: 2px; background: #232b38; outline: none;
+  }
+  input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none; width: 13px; height: 13px; border-radius: 50%;
+    background: var(--accent); cursor: pointer;
+  }
+  input[type=range]::-moz-range-thumb {
+    width: 13px; height: 13px; border-radius: 50%; background: var(--accent);
+    cursor: pointer; border: none;
+  }
+  input[type=color] {
+    -webkit-appearance: none; appearance: none; width: 32px; height: 23px;
+    border: 1px solid var(--lab-line); border-radius: 6px; background: none;
+    padding: 0; cursor: pointer;
+  }
+  input[type=color]::-webkit-color-swatch-wrapper { padding: 2px; }
+  input[type=color]::-webkit-color-swatch { border: none; border-radius: 4px; }
+
+  .btn {
+    display: block; width: 100%; padding: 10px; margin-top: 6px;
+    background: #19202c; color: var(--t1); border: 1px solid var(--lab-line);
+    border-radius: 9px; font-size: 12px; cursor: pointer; font-family: inherit;
+  }
+  .btn:hover { background: #212a38; }
+  .btn.primary { background: var(--accent); color: var(--on-light); border-color: transparent; font-weight: 600; }
+
+  .out {
+    margin-top: 10px; padding: 10px; background: #06090e;
+    border: 1px solid var(--lab-line); border-radius: 9px;
+    font-size: 10px; line-height: 1.6; color: var(--t2);
+    white-space: pre-wrap; word-break: break-all; max-height: 200px; overflow: auto;
+  }
+
+  /* ── Stage ───────────────────────────────────────────────────────────── */
+  .stage { padding: 24px 20px 60px; display: flex; flex-direction: column;
+           align-items: center; gap: 18px; }
+  .tabs { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; max-width: 760px; }
+  .chip {
+    padding: 7px 13px; border-radius: 50px; font-size: 11.5px; cursor: pointer;
+    background: #151a23; color: var(--t2); border: 1px solid var(--lab-line);
+    font-family: inherit;
+  }
+  .chip:hover { color: var(--t1); }
+  .chip[aria-selected=true] { background: var(--accent); color: var(--on-light);
+                              border-color: transparent; font-weight: 600; }
+
+  .phone {
+    width: 376px; height: 812px; border-radius: 48px; padding: 9px;
+    background: linear-gradient(160deg, #2c333f, #13161d 40%, #090b10);
+    box-shadow: 0 44px 90px -22px rgba(0,0,0,.92), 0 0 0 1px rgba(255,255,255,.06);
+    flex: none;
+  }
+  @media (max-width: 430px) { .phone { width: 100%; height: 730px; border-radius: 34px; } }
+
+  .vp { position: relative; width: 100%; height: 100%; border-radius: 40px;
+        overflow: hidden; font-size: calc(1rem * var(--font-scale)); }
+
+  /* ── Aurora ──────────────────────────────────────────────────────────── */
+  .aurora { position: absolute; inset: 0; }
+  .aurora.feed {
+    background: linear-gradient(to bottom,
+      var(--aur-0) 0%, var(--aur-1) 26%, var(--aur-2) 55%, var(--aur-3) 80%, var(--aur-4) 100%);
+  }
+  .aurora.chat {
+    background: linear-gradient(to bottom,
+      var(--chat-0) 0%, var(--chat-1) 22%, var(--chat-2) 55%, var(--chat-3) 100%);
+  }
+  .blooms { position: absolute; inset: 0; filter: blur(var(--bloom-blur)); pointer-events: none; }
+  .bloom { position: absolute; border-radius: 50%; opacity: var(--bloom-a); }
+  .bloom.a { width: 300px; height: 300px; background: var(--bloom-cyan);
+             top: -6%; left: -18%; animation: d1 41s linear infinite; }
+  .bloom.b { width: 330px; height: 330px; background: var(--bloom-indigo);
+             top: 18%; right: -26%; animation: d2 53s linear infinite; }
+  .bloom.c { width: 350px; height: 350px; background: var(--bloom-violet);
+             bottom: 6%; right: -16%; animation: d3 67s linear infinite; }
+  @keyframes d1 { 0%,100% { transform: none } 50% { transform: translate(40px,26px) } }
+  @keyframes d2 { 0%,100% { transform: none } 50% { transform: translate(-34px,30px) } }
+  @keyframes d3 { 0%,100% { transform: none } 50% { transform: translate(28px,-26px) } }
+  .paused .bloom { animation-play-state: paused; }
+  @media (prefers-reduced-motion: reduce) { .bloom { animation: none !important } }
+
+  .vignette { position: absolute; inset: 0; pointer-events: none;
+    background: radial-gradient(ellipse at 50% 42%, transparent 32%, rgba(0,0,0,.3) 100%); }
+
+  /* ── Glass, two tones ────────────────────────────────────────────────── */
+  .g {
+    position: relative; overflow: hidden; border-radius: var(--r-card);
+    background: rgba(var(--glass-dark) / var(--glass-dark-a));
+    backdrop-filter: blur(var(--backdrop)) saturate(150%);
+    -webkit-backdrop-filter: blur(var(--backdrop)) saturate(150%);
+    border: 1px solid rgba(255,255,255,var(--border-a));
+  }
+  .g.light {
+    background: rgba(255,255,255,var(--glass-light-a));
+  }
+  .g.light.strong { background: rgba(255,255,255,var(--glass-light-strong-a)); }
+  .g::before {
+    content: ""; position: absolute; inset: 0; pointer-events: none;
+    background: linear-gradient(to bottom, rgba(255,255,255,var(--sheen)), transparent 58%);
+  }
+
+  /* ── Screens ─────────────────────────────────────────────────────────── */
+  .screen { position: absolute; inset: 0; display: none; flex-direction: column; overflow: hidden; }
+  .screen.on { display: flex; animation: up .32s ease both; }
+  @keyframes up { from { opacity: 0; transform: translateY(9px) } to { opacity: 1; transform: none } }
+
+  .scroll { flex: 1; overflow-y: auto; overscroll-behavior: contain; position: relative; z-index: 1; }
+  .scroll::-webkit-scrollbar { width: 0 }
+  .pad { padding: 0 18px }
+
+  .sb { height: 46px; display: flex; align-items: center; justify-content: space-between;
+        padding: 0 24px; font-size: 13px; font-weight: 600; position: relative; z-index: 2; }
+  .sb .r { display: flex; gap: 5px; align-items: center; font-size: 11px; opacity: .9 }
+
+  h2.t { font-size: 30px; font-weight: 800; letter-spacing: -.7px; margin: 6px 0 10px }
+  .m2 { color: var(--t2) } .m3 { color: var(--t3) }
+
+  /* Circular icon button */
+  .cib {
+    width: 44px; height: 44px; border-radius: 50%; display: grid; place-items: center;
+    cursor: pointer; font-size: 17px; flex: none; position: relative;
+    background: rgba(var(--glass-dark) / var(--glass-dark-a));
+    backdrop-filter: blur(var(--backdrop)); -webkit-backdrop-filter: blur(var(--backdrop));
+    border: 1px solid rgba(255,255,255,var(--border-a));
+    transition: transform .16s cubic-bezier(.3,1.4,.5,1);
+  }
+  .cib:active { transform: scale(.9) }
+  .cib.light { background: rgba(255,255,255,var(--glass-light-a)) }
+  .cib .bdg {
+    position: absolute; top: -2px; right: -2px; background: var(--heart); color: #fff;
+    font-size: 9px; font-weight: 700; border-radius: 50px; padding: 1px 5px;
+  }
+
+  /* Segmented tabs */
+  .segs { display: flex; gap: 20px; align-items: center }
+  .seg { font-size: 18px; font-weight: 500; color: var(--t3); cursor: pointer;
+         display: flex; align-items: center; gap: 6px }
+  .seg.on { font-size: 19px; font-weight: 700; color: var(--t1) }
+  .seg.on::after { content: ""; width: 5px; height: 5px; border-radius: 50%; background: var(--accent) }
+
+  /* Health strip */
+  .health { display: inline-flex; align-items: center; gap: 8px;
+            padding: 8px 14px; border-radius: 50px; font-size: 12px; color: var(--t2) }
+  .dot { width: 8px; height: 8px; border-radius: 50%; flex: none }
+
+  /* Stories */
+  .stories { display: flex; gap: 11px; padding: 12px 18px 4px; overflow-x: auto }
+  .stories::-webkit-scrollbar { height: 0 }
+  .story { position: relative; width: 74px; height: 96px; flex: none; cursor: pointer;
+           overflow: hidden; background: var(--raised);
+           border: 1px solid rgba(255,255,255,var(--border-a)) }
+  .story .ph { position: absolute; inset: 0; filter: blur(11px); transform: scale(1.3);
+               background-size: cover; background-position: center }
+  .story .sc { position: absolute; inset: 0;
+               background: linear-gradient(to bottom, transparent 34%, rgba(0,0,0,.74)) }
+  .story .av { position: absolute; top: 10px; left: 50%; transform: translateX(-50%);
+               width: 38px; height: 38px; border-radius: 50%; background-size: cover;
+               background-position: center; display: grid; place-items: center;
+               font-size: 13px; font-weight: 600 }
+  .story .av.ring { box-shadow: 0 0 0 1.8px transparent;
+    background-image: var(--pi), conic-gradient(from 140deg, var(--bloom-cyan), var(--bloom-indigo), var(--bloom-violet), var(--bloom-cyan));
+    background-origin: border-box; background-clip: content-box, border-box;
+    border: 1.8px solid transparent; }
+  .story .nm { position: absolute; bottom: 8px; left: 0; right: 0; text-align: center;
+               font-size: 11px; font-weight: 500 }
+  .story .liv { position: absolute; top: 8px; right: 8px; width: 11px; height: 11px;
+                border-radius: 50%; background: var(--success); border: 2px solid rgba(0,0,0,.45) }
+  .story.glow { box-shadow: 0 0 20px -3px color-mix(in srgb, var(--bloom-cyan) 60%, transparent) }
+  .story.you .av { background: rgba(255,255,255,.92); color: var(--on-light); font-size: 19px }
+
+  /* Hero card */
+  .hero { position: relative; height: 340px; border-radius: var(--r-card);
+          overflow: hidden; margin: 0 18px; background: var(--raised); cursor: pointer }
+  .hero .bg { position: absolute; inset: 0; background-size: cover; background-position: center;
+              filter: blur(26px); transform: scale(1.2) }
+  .hero .sc { position: absolute; inset: 0;
+    background: linear-gradient(to bottom, rgba(0,0,0,.42), transparent 45%, rgba(0,0,0,.74)) }
+  .hero .av { position: absolute; top: 14px; left: 14px; width: 46px; height: 46px;
+              border-radius: 50%; background-size: cover; background-position: center;
+              border: 1.8px solid transparent; background-origin: border-box;
+              background-clip: content-box, border-box }
+  .hero .meta { position: absolute; left: 16px; right: calc(var(--rail-w) + 30px); bottom: 16px }
+  .hero .meta h3 { margin: 0; font-size: 19px; font-weight: 700; letter-spacing: -.3px }
+
+  /* Action rail */
+  .rail { position: absolute; right: 12px; top: 50%; transform: translateY(-50%);
+          width: var(--rail-w); border-radius: 50px; padding: 14px 0;
+          display: flex; flex-direction: column; align-items: center; gap: 6px }
+  .rail button {
+    width: 46px; height: 46px; border-radius: 50%; border: none; background: none;
+    color: var(--t1); font-size: 20px; cursor: pointer; display: grid; place-items: center;
+    transition: transform .18s cubic-bezier(.3,1.5,.5,1);
+  }
+  .rail button:active { transform: scale(.86) }
+  .rail button.liked { color: var(--heart) }
+  .rail .ct { font-size: 11px; font-weight: 600; margin: -4px 0 4px }
+
+  /* Pills */
+  .pill { display: inline-flex; align-items: center; gap: 6px; padding: 8px 14px;
+          border-radius: 50px; font-size: 12.5px; font-weight: 600; cursor: pointer;
+          border: 1px solid rgba(255,255,255,var(--border-a));
+          background: rgba(255,255,255,var(--glass-light-strong-a));
+          backdrop-filter: blur(var(--backdrop)); -webkit-backdrop-filter: blur(var(--backdrop)) }
+  .pill.solid { background: var(--accent); color: var(--on-light); border-color: transparent }
+  .pill.live { background: var(--live); color: #fff; border-color: transparent }
+  .pill.live .d { width: 6px; height: 6px; border-radius: 50%; background: #fff;
+                  animation: blink .9s ease-in-out infinite alternate }
+  @keyframes blink { from { opacity: .45 } to { opacity: 1 } }
+
+  /* Conversation rows */
+  .conv { display: flex; align-items: center; gap: 13px; padding: 12px 14px;
+          margin: 0 18px; cursor: pointer }
+  .conv .av { width: 52px; height: 52px; flex: none; border-radius: 18px;
+              background: var(--raised); background-size: cover; background-position: center;
+              display: grid; place-items: center; font-weight: 600; font-size: 17px; color: var(--t2) }
+  .conv .b { flex: 1; min-width: 0 }
+  .conv .tp { display: flex; justify-content: space-between; align-items: baseline; gap: 8px }
+  .conv .nm { font-size: 15.5px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis }
+  .conv .tm { font-size: 11px; color: var(--t3); flex: none }
+  .conv .pv { font-size: 13px; color: var(--t3); white-space: nowrap; overflow: hidden;
+              text-overflow: ellipsis; margin-top: 3px }
+  .conv.un .nm { font-weight: 800 } .conv.un .tm { color: var(--accent) } .conv.un .pv { color: var(--t2) }
+  .badge { background: var(--accent); color: var(--on-light); font-size: 10.5px; font-weight: 700;
+           border-radius: 50px; padding: 2px 7px; flex: none }
+
+  /* Bubbles */
+  .msgs { display: flex; flex-direction: column; gap: 5px; padding: 14px 18px }
+  .line { display: flex; align-items: flex-end; gap: 7px }
+  .line.out { justify-content: flex-end }
+  .tav { width: 26px; height: 26px; border-radius: 50%; flex: none; background: var(--raised);
+         background-size: cover; background-position: center;
+         border: 1px solid rgba(255,255,255,.1) }
+  .bub { max-width: 74%; padding: 10px 14px; font-size: 15px; line-height: 1.42;
+         border: 1px solid rgba(255,255,255,.08);
+         backdrop-filter: blur(var(--backdrop)); -webkit-backdrop-filter: blur(var(--backdrop)) }
+  .bub.in  { background: color-mix(in srgb, var(--bub-in) 90%, transparent);
+             border-radius: var(--r-bubble) var(--r-bubble) var(--r-bubble) 7px }
+  .bub.out { background: color-mix(in srgb, var(--bub-out) 90%, transparent);
+             border-radius: var(--r-bubble) var(--r-bubble) 7px var(--r-bubble) }
+  .bub .mt { display: flex; gap: 4px; align-items: center; justify-content: flex-end;
+             font-size: 10.5px; color: var(--t3); margin-top: 4px }
+  .day { align-self: center; font-size: 11px; color: var(--t2); padding: 6px 14px;
+         border-radius: 50px; margin: 10px 0 }
+
+  /* Voice capsule */
+  .voice { display: flex; align-items: center; gap: 10px; padding: 8px 12px 8px 8px;
+           border-radius: 50px; max-width: 74%;
+           border: 1px solid rgba(255,255,255,.08);
+           backdrop-filter: blur(var(--backdrop)); -webkit-backdrop-filter: blur(var(--backdrop)) }
+  .voice.in { background: color-mix(in srgb, var(--bub-in) 90%, transparent) }
+  .voice.out { background: color-mix(in srgb, var(--bub-out) 90%, transparent) }
+  .voice .pl { width: 40px; height: 40px; border-radius: 50%; flex: none; cursor: pointer;
+               display: grid; place-items: center; border: none; font-size: 14px;
+               background: color-mix(in srgb, var(--accent) 20%, transparent); color: var(--accent) }
+  .wave { display: flex; align-items: center; gap: 2px; height: 30px; flex: 1; cursor: pointer }
+  .wave i { display: block; width: 3px; border-radius: 2px; flex: 1; min-width: 2px;
+            background: color-mix(in srgb, #9fc7da 24%, transparent) }
+  .wave i.on { background: linear-gradient(to bottom, #6fd8f5, var(--bloom-indigo)) }
+  .voice .du { font-size: 11.5px; color: var(--t3); flex: none }
+
+  /* Composer */
+  .comp { display: flex; align-items: flex-end; gap: 8px; padding: 8px;
+          margin: 0 12px 12px; border-radius: 30px }
+  .comp .f { flex: 1; padding: 10px 12px; font-size: 15px; color: var(--t1);
+             background: none; border: none; outline: none; font-family: inherit }
+  .comp .f::placeholder { color: var(--t3) }
+  .fab { width: 42px; height: 42px; border-radius: 50%; border: none; flex: none;
+         background: var(--accent); color: var(--on-light); cursor: pointer;
+         display: grid; place-items: center; font-size: 16px;
+         box-shadow: 0 0 22px -5px var(--accent) }
+
+  /* Dock */
+  .dock { position: absolute; left: 18px; right: 18px; bottom: 16px; height: var(--dock-h);
+          border-radius: 50px; display: flex; align-items: center; padding: 0 6px; z-index: 3;
+          box-shadow: 0 0 28px -8px rgba(255,255,255,.35) }
+  .dock .pillhl { position: absolute; top: 8px; bottom: 8px; border-radius: 50px;
+                  background: rgba(255,255,255,.22);
+                  border: 1px solid rgba(255,255,255,.32);
+                  transition: left .46s cubic-bezier(.3,1.5,.5,1), width .46s cubic-bezier(.3,1.5,.5,1) }
+  .dock button { flex: 1; background: none; border: none; cursor: pointer; z-index: 1;
+                 display: flex; align-items: center; justify-content: center; gap: 7px;
+                 color: var(--t2); font-family: inherit; padding: 0; height: 100% }
+  .dock .chipico { width: 26px; height: 26px; border-radius: 13px; display: grid;
+                   place-items: center; font-size: 15px;
+                   transition: all .3s cubic-bezier(.3,1.5,.5,1) }
+  .dock button.on { color: var(--t1) }
+  .dock button.on .chipico { width: 30px; height: 30px; border-radius: 10px;
+                             background: rgba(255,255,255,.92); color: var(--on-light) }
+  .dock .lb { font-size: 12.5px; font-weight: 600; white-space: nowrap;
+              max-width: 0; overflow: hidden; opacity: 0;
+              transition: max-width .4s cubic-bezier(.3,1.4,.5,1), opacity .3s }
+  .dock button.on .lb { max-width: 80px; opacity: 1 }
+
+  /* Call */
+  .wall { position: absolute; inset: 0; background-size: cover; background-position: center;
+          filter: blur(80px); transform: scale(1.35) }
+  .wsc { position: absolute; inset: 0;
+    background: linear-gradient(to bottom, rgba(0,0,0,.55), rgba(0,0,0,.32) 45%, rgba(0,0,0,.7)) }
+  .cbody { position: relative; z-index: 1; flex: 1; display: flex; flex-direction: column;
+           align-items: center; padding: 4px 24px 30px; text-align: center }
+  .cav { width: 148px; height: 148px; border-radius: 52px; position: relative;
+         background-size: cover; background-position: center; display: grid; place-items: center;
+         font-size: 46px; font-weight: 700; animation: breathe 3s ease-in-out infinite }
+  @keyframes breathe {
+    0%,100% { box-shadow: 0 0 34px -8px color-mix(in srgb, var(--accent) 55%, transparent) }
+    50% { box-shadow: 0 0 58px -4px color-mix(in srgb, var(--accent) 88%, transparent) }
+  }
+  .metrics { display: flex; gap: 18px; padding: 10px 0 0 }
+  .metric .k { font-size: 8.5px; letter-spacing: .8px; color: var(--t3) }
+  .metric .v { font-size: 15px; font-weight: 600 }
+  .metric .u { font-size: 9px; color: var(--t3); margin-left: 1px }
+  .cbtns { display: flex; gap: 22px; justify-content: center }
+  .cb { width: 58px; height: 58px; border-radius: 50%; border: none; cursor: pointer;
+        display: grid; place-items: center; font-size: 21px; color: #fff;
+        background: rgba(255,255,255,var(--glass-light-a));
+        border: 1px solid rgba(255,255,255,var(--border-a));
+        backdrop-filter: blur(var(--backdrop)); -webkit-backdrop-filter: blur(var(--backdrop)) }
+  .cb.end { width: 68px; height: 68px; background: var(--danger); border-color: transparent;
+            box-shadow: 0 0 30px -6px var(--danger) }
+  .cb.ans { width: 68px; height: 68px; background: var(--success); border-color: transparent;
+            box-shadow: 0 0 30px -6px var(--success) }
+  .cb.on { background: rgba(255,255,255,.9); color: var(--on-light); border-color: transparent }
+
+  /* Role picker */
+  .role { padding: 18px; cursor: pointer; border-radius: 26px;
+          transition: transform .3s cubic-bezier(.3,1.5,.5,1), box-shadow .3s;
+          transform: scale(.976) }
+  .role.sel { transform: scale(1) }
+  .role.sel.cy { box-shadow: 0 0 28px -6px var(--bloom-cyan);
+                 border-color: color-mix(in srgb, var(--bloom-cyan) 55%, transparent) }
+  .role.sel.pu { box-shadow: 0 0 28px -6px var(--bloom-violet);
+                 border-color: color-mix(in srgb, var(--bloom-violet) 55%, transparent) }
+  .role .hd { display: flex; align-items: center; gap: 13px }
+  .role .ic { width: 42px; height: 42px; border-radius: 50%; display: grid;
+              place-items: center; font-size: 19px; flex: none }
+  .role h3 { margin: 0; font-size: 18px; font-weight: 700 }
+  .role .li { display: flex; gap: 9px; font-size: 12px; color: var(--t3); margin-top: 6px; line-height: 1.45 }
+  .role .li::before { content: "•" }
+  .tag { font-size: 9.5px; font-weight: 700; padding: 2px 8px; border-radius: 50px;
+         background: color-mix(in srgb, var(--success) 20%, transparent); color: var(--success) }
+
+  /* Pairing */
+  .codebox { background: var(--raised); border-radius: 20px; padding: 22px 12px;
+             text-align: center; cursor: pointer }
+  .codebox .c { font-size: 38px; font-weight: 700; letter-spacing: 6px; color: var(--accent) }
+  .cells { display: flex; gap: 6px }
+  .cell { flex: 1; aspect-ratio: .78; border-radius: 12px; display: grid; place-items: center;
+          font-size: 20px; font-weight: 700;
+          background: rgba(var(--glass-dark) / var(--glass-dark-a));
+          border: 1px solid rgba(255,255,255,var(--border-a)) }
+  .cell.f { background: color-mix(in srgb, var(--accent) 18%, transparent) }
+  .cell.a { border: 1.5px solid var(--accent) }
+  .sas { font-size: 34px; font-weight: 700; letter-spacing: 4px; color: var(--accent) }
+  .qr { width: 100%; aspect-ratio: 1; background: #fff; border-radius: 20px;
+        display: grid; place-items: center; padding: 14px }
+  .qr svg { width: 100%; height: 100% }
+
+  .cardpad { padding: 18px }
+  .kv { display: flex; justify-content: space-between; font-size: 12.5px; padding: 3px 0 }
+  .kv .k { color: var(--t3) } .kv .v { color: var(--t2) }
+  .bp { display: block; width: 100%; padding: 13px; border: none; border-radius: 50px;
+        background: var(--accent); color: var(--on-light); font-size: 14px; font-weight: 600;
+        cursor: pointer; font-family: inherit; box-shadow: 0 0 24px -7px var(--accent) }
+  .bs { display: block; width: 100%; padding: 12px; border: none; border-radius: 50px;
+        background: rgba(255,255,255,.1); color: var(--t2); font-size: 13px;
+        font-weight: 500; cursor: pointer; font-family: inherit }
+  .bs.dg { background: color-mix(in srgb, var(--danger) 14%, transparent); color: var(--danger) }
+  .stack > * + * { margin-top: 12px }
+  .hint { font-size: 11.5px; line-height: 1.55; color: var(--t3) }
+  .warn { font-size: 11.5px; line-height: 1.55; color: var(--warning) }
+</style>
+
+<div class="lab">
+
+  <!-- ═══════════ CONTROL PANEL ═══════════ -->
+  <aside class="panel">
+    <h1>Relay UI Lab</h1>
+    <p class="sub">
+      Every control writes the same token <span class="mono">GlassTheme.kt</span> compiles
+      into the APK. Tune, hit <b>Copy tokens</b>, paste it back to me and I apply it to Kotlin.
+    </p>
+
+    <div class="group">
+      <h2>Aurora — feed</h2>
+      <div class="row"><label>Top</label><input type="color" data-v="--aur-0" value="#050a12"></div>
+      <div class="row"><label>Upper mid</label><input type="color" data-v="--aur-1" value="#0a1c29"></div>
+      <div class="row"><label>Mid</label><input type="color" data-v="--aur-2" value="#114054"></div>
+      <div class="row"><label>Lower mid</label><input type="color" data-v="--aur-3" value="#1f7799"></div>
+      <div class="row"><label>Bottom glow</label><input type="color" data-v="--aur-4" value="#32a6cb"></div>
+    </div>
+
+    <div class="group">
+      <h2>Aurora — chat</h2>
+      <div class="row"><label>Header teal</label><input type="color" data-v="--chat-0" value="#0c3040"></div>
+      <div class="row"><label>Body</label><input type="color" data-v="--chat-2" value="#080d14"></div>
+      <div class="row"><label>Floor</label><input type="color" data-v="--chat-3" value="#04060a"></div>
+    </div>
+
+    <div class="group">
+      <h2>Glass</h2>
+      <div class="row"><label>Dark opacity</label>
+        <input type="range" data-v="--glass-dark-a" min="0" max="1" step=".01" value=".62"><output>.62</output></div>
+      <div class="row"><label>Light frost</label>
+        <input type="range" data-v="--glass-light-a" min="0" max=".5" step=".01" value=".14"><output>.14</output></div>
+      <div class="row"><label>Hairline</label>
+        <input type="range" data-v="--border-a" min="0" max=".4" step=".01" value=".14"><output>.14</output></div>
+      <div class="row"><label>Sheen</label>
+        <input type="range" data-v="--sheen" min="0" max=".3" step=".01" value=".12"><output>.12</output></div>
+      <div class="row"><label>Backdrop blur</label>
+        <input type="range" data-v="--backdrop" min="0" max="60" step="1" value="26" data-u="px"><output>26px</output></div>
+    </div>
+
+    <div class="group">
+      <h2>Blooms</h2>
+      <div class="row"><label>Cyan</label><input type="color" data-v="--bloom-cyan" value="#35c8ec"></div>
+      <div class="row"><label>Indigo</label><input type="color" data-v="--bloom-indigo" value="#5b6be8"></div>
+      <div class="row"><label>Violet</label><input type="color" data-v="--bloom-violet" value="#9b6bf0"></div>
+      <div class="row"><label>Intensity</label>
+        <input type="range" data-v="--bloom-a" min="0" max=".5" step=".01" value=".18"><output>.18</output></div>
+      <div class="row"><label>Blur</label>
+        <input type="range" data-v="--bloom-blur" min="30" max="180" step="2" value="110" data-u="px"><output>110px</output></div>
+      <button class="btn" id="pause">Pause drift</button>
+    </div>
+
+    <div class="group">
+      <h2>Accents</h2>
+      <div class="row"><label>Accent</label><input type="color" data-v="--accent" value="#4cc7ee"></div>
+      <div class="row"><label>Heart</label><input type="color" data-v="--heart" value="#ff3b47"></div>
+      <div class="row"><label>Live</label><input type="color" data-v="--live" value="#f4353f"></div>
+      <div class="row"><label>Success</label><input type="color" data-v="--success" value="#27d07e"></div>
+      <div class="row"><label>Bubble in</label><input type="color" data-v="--bub-in" value="#16202b"></div>
+      <div class="row"><label>Bubble out</label><input type="color" data-v="--bub-out" value="#1b2a3a"></div>
+    </div>
+
+    <div class="group">
+      <h2>Shape</h2>
+      <div class="row"><label>Card</label>
+        <input type="range" data-v="--r-card" min="0" max="44" step="1" value="28" data-u="px"><output>28px</output></div>
+      <div class="row"><label>Squircle</label>
+        <input type="range" data-v="--r-squircle" min="0" max="36" step="1" value="24" data-u="px"><output>24px</output></div>
+      <div class="row"><label>Bubble</label>
+        <input type="range" data-v="--r-bubble" min="4" max="34" step="1" value="22" data-u="px"><output>22px</output></div>
+      <div class="row"><label>Dock height</label>
+        <input type="range" data-v="--dock-h" min="52" max="92" step="1" value="68" data-u="px"><output>68px</output></div>
+      <div class="row"><label>Rail width</label>
+        <input type="range" data-v="--rail-w" min="44" max="76" step="1" value="56" data-u="px"><output>56px</output></div>
+      <div class="row"><label>Text scale</label>
+        <input type="range" data-v="--font-scale" min=".85" max="1.2" step=".01" value="1"><output>1</output></div>
+    </div>
+
+    <div class="group">
+      <h2>Export</h2>
+      <button class="btn primary" id="copy">Copy tokens</button>
+      <button class="btn" id="reset">Reset to shipped values</button>
+      <div class="out mono" id="out"></div>
+    </div>
+  </aside>
+
+  <!-- ═══════════ STAGE ═══════════ -->
+  <main class="stage">
+    <div class="tabs" role="tablist" id="tabs">
+      <button class="chip" role="tab" data-s="messages" aria-selected="true">1 · Messages</button>
+      <button class="chip" role="tab" data-s="thread">2 · Thread</button>
+      <button class="chip" role="tab" data-s="call">3 · Call</button>
+      <button class="chip" role="tab" data-s="ring">4 · Ringing</button>
+      <button class="chip" role="tab" data-s="role">5 · Role picker</button>
+      <button class="chip" role="tab" data-s="send">6 · Sender code</button>
+      <button class="chip" role="tab" data-s="recv">7 · Enter code</button>
+      <button class="chip" role="tab" data-s="set">8 · Settings</button>
+    </div>
+
+    <div class="phone">
+      <div class="vp" id="vp">
+
+        <!-- ── 1 · MESSAGES ─────────────────────────────────────────────── -->
+        <section class="screen on" data-s="messages">
+          <div class="aurora feed"><div class="blooms">
+            <div class="bloom a"></div><div class="bloom b"></div><div class="bloom c"></div>
+          </div></div>
+          <div class="vignette"></div>
+
+          <div class="sb"><span>9:41</span><span class="r">▮▮▮ ⌾ ▰</span></div>
+
+          <div class="scroll">
+            <div class="pad">
+              <div style="display:flex;justify-content:space-between;align-items:center">
+                <div class="cib">☰</div>
+                <div style="display:flex;gap:10px">
+                  <div class="cib">◔<span class="bdg">3</span></div>
+                  <div class="cib">✎</div>
+                </div>
+              </div>
+
+              <div style="height:18px"></div>
+              <div class="segs">
+                <span class="seg on" data-tab="0">All</span>
+                <span class="seg" data-tab="1">Unread</span>
+              </div>
+
+              <div style="height:12px"></div>
+              <div class="g health">
+                <span class="dot" style="background:var(--success)"></span>
+                Sender online <span class="m3">⚡ 78%</span>
+              </div>
+            </div>
+
+            <div class="stories" id="stories"></div>
+
+            <div style="height:6px"></div>
+            <div class="hero" id="hero"></div>
+            <div style="height:10px"></div>
+
+            <div id="convs"></div>
+            <div style="height:130px"></div>
+          </div>
+
+          <nav class="g light strong dock" id="dock">
+            <span class="pillhl" id="hl"></span>
+            <button class="on"><span class="chipico">⌂</span><span class="lb">Home</span></button>
+            <button><span class="chipico">⌕</span><span class="lb">Search</span></button>
+            <button><span class="chipico">♡</span><span class="lb">Activity</span></button>
+            <button><span class="chipico">◍</span><span class="lb">Profile</span></button>
+          </nav>
+        </section>
+
+        <!-- ── 2 · THREAD ───────────────────────────────────────────────── -->
+        <section class="screen" data-s="thread">
+          <div class="aurora chat"><div class="blooms">
+            <div class="bloom a" style="opacity:calc(var(--bloom-a) * .7)"></div>
+            <div class="bloom b" style="opacity:calc(var(--bloom-a) * .5)"></div>
+          </div></div>
+
+          <div class="g" style="border-radius:0 0 30px 30px;border-top:none;position:relative;z-index:2">
+            <div class="sb"><span>9:41</span><span class="r">▮▮▮ ⌾ ▰</span></div>
+            <div style="display:flex;align-items:center;gap:11px;padding:0 14px 14px">
+              <div class="cib" style="width:38px;height:38px;font-size:15px">‹</div>
+              <div class="tav" style="width:38px;height:38px" id="thav"></div>
+              <div style="flex:1">
+                <div style="font-size:16px;font-weight:600">Sara Ahmadi</div>
+                <div style="font-size:11.5px;color:var(--success)">Online</div>
+              </div>
+              <div class="cib" style="width:38px;height:38px;font-size:15px">▤</div>
+              <div class="cib" style="width:38px;height:38px;font-size:15px">✆</div>
+            </div>
+          </div>
+
+          <div class="scroll">
+            <div class="msgs" id="msgs"></div>
+          </div>
+
+          <div class="g comp" style="position:relative;z-index:2">
+            <div class="cib" style="width:38px;height:38px;font-size:15px">＋</div>
+            <input class="f" placeholder="Type Message..">
+            <div class="cib" style="width:38px;height:38px;font-size:15px">🎙</div>
+            <button class="fab">➤</button>
+          </div>
+        </section>
+
+        <!-- ── 3 · CALL ─────────────────────────────────────────────────── -->
+        <section class="screen" data-s="call">
+          <div class="wall" id="callwall"></div><div class="wsc"></div>
+          <div class="cbody">
+            <div class="sb" style="width:100%"><span>9:41</span><span class="r">▮▮▮ ⌾ ▰</span></div>
+            <div class="m3" style="font-size:13px;letter-spacing:1.3px;font-weight:500;margin-top:12px">RELAYED CALL</div>
+            <div style="height:22px"></div>
+            <div class="cav" id="callav"></div>
+            <div style="height:22px"></div>
+            <div style="font-size:30px;font-weight:800;letter-spacing:-.5px">Sara Ahmadi</div>
+            <div class="m3" style="font-size:14px;margin-top:4px">+98 912 345 6789</div>
+            <div class="mono" style="font-size:17px;color:var(--accent);margin-top:10px;font-weight:500">4:18</div>
+
+            <div style="height:16px"></div>
+            <div class="g light" style="border-radius:20px">
+              <div style="padding:13px 18px">
+                <div style="display:flex;align-items:center;gap:7px">
+                  <span class="dot" style="background:var(--success)"></span>
+                  <b style="font-size:11px;letter-spacing:1px;color:var(--success)">HD</b>
+                  <span class="mono m3" style="font-size:10.5px">OPUS/48000</span>
+                  <span class="mono m3" style="font-size:10.5px">SRFLX</span>
+                </div>
+                <div class="metrics">
+                  <div class="metric"><div class="k">RTT</div><div class="v mono">42<span class="u">ms</span></div></div>
+                  <div class="metric"><div class="k">JITTER</div><div class="v mono">9<span class="u">ms</span></div></div>
+                  <div class="metric"><div class="k">LOSS</div><div class="v mono">0.2<span class="u">%</span></div></div>
+                  <div class="metric"><div class="k">RATE</div><div class="v mono">31<span class="u">kbps</span></div></div>
+                </div>
+                <div class="m3" style="font-size:10.5px;margin-top:9px">Sender capture · Speakerphone loopback</div>
+              </div>
+            </div>
+
+            <div style="flex:1"></div>
+            <div class="cbtns" style="margin-bottom:24px">
+              <button class="cb">🎙</button><button class="cb on">⌗</button><button class="cb">🔊</button>
+            </div>
+            <button class="cb end">✆</button>
+          </div>
+        </section>
+
+        <!-- ── 4 · RINGING ──────────────────────────────────────────────── -->
+        <section class="screen" data-s="ring">
+          <div class="wall" id="ringwall"></div><div class="wsc"></div>
+          <div class="cbody">
+            <div class="sb" style="width:100%"><span>9:41</span><span class="r">▮▮▮ ⌾ ▰</span></div>
+            <div class="m3" style="font-size:13px;letter-spacing:1.3px;font-weight:500;margin-top:26px">INCOMING CALL</div>
+            <div style="height:28px"></div>
+            <div class="cav" id="ringav"></div>
+            <div style="height:24px"></div>
+            <div style="font-size:30px;font-weight:800;letter-spacing:-.5px">Reza Karimi</div>
+            <div class="m3" style="font-size:14px;margin-top:4px">+98 935 000 1122</div>
+            <div style="height:16px"></div>
+            <div class="g light health"><span class="dot" style="background:var(--bloom-cyan)"></span>
+              Relayed from Galaxy Note 10+</div>
+            <div style="flex:1"></div>
+            <div class="cbtns" style="width:100%;justify-content:space-evenly;margin-bottom:18px">
+              <button class="cb end">✆</button><button class="cb ans">✆</button>
+            </div>
+          </div>
+        </section>
+
+        <!-- ── 5 · ROLE PICKER ──────────────────────────────────────────── -->
+        <section class="screen" data-s="role">
+          <div class="aurora feed"><div class="blooms">
+            <div class="bloom a"></div><div class="bloom b"></div><div class="bloom c"></div>
+          </div></div><div class="vignette"></div>
+
+          <div class="sb"><span>9:41</span><span class="r">▮▮▮ ⌾ ▰</span></div>
+          <div class="scroll pad">
+            <div style="height:22px"></div>
+            <h2 class="t" style="text-align:center;font-size:27px">Set up this device</h2>
+            <p class="m2" style="text-align:center;font-size:13.5px;line-height:1.5;margin:0 0 24px">
+              Install the same app on every phone. One holds the SIM and does the
+              sending; the others receive.
+            </p>
+
+            <div class="g role sel cy" data-role="s" style="margin-bottom:14px">
+              <div class="hd">
+                <div class="ic" style="background:color-mix(in srgb,var(--bloom-cyan) 22%,transparent);color:var(--bloom-cyan)">▣</div>
+                <div style="flex:1">
+                  <div style="display:flex;align-items:center;gap:8px">
+                    <h3>Sender</h3><span class="tag">Suggested</span></div>
+                  <div class="m2" style="font-size:12.5px">This phone has the SIM</div>
+                </div>
+                <span style="color:var(--bloom-cyan);font-size:20px">✓</span>
+              </div>
+              <div class="li">Relays its SMS and cellular calls out</div>
+              <div class="li">Generates the pairing code</div>
+              <div class="li">Must stay powered and online</div>
+            </div>
+
+            <div class="g role pu" data-role="r">
+              <div class="hd">
+                <div class="ic" style="background:color-mix(in srgb,var(--bloom-violet) 22%,transparent);color:var(--bloom-violet)">▢</div>
+                <div style="flex:1"><h3>Receiver</h3>
+                  <div class="m2" style="font-size:12.5px">This phone has no SIM</div></div>
+              </div>
+              <div class="li">Reads and replies to the sender's messages</div>
+              <div class="li">Rings for the sender's calls</div>
+              <div class="li">Enter the code from the sender</div>
+            </div>
+
+            <div class="g" style="margin-top:18px;border-radius:16px">
+              <div style="padding:14px;display:flex;gap:10px">
+                <span style="color:var(--warning)">⚠</span>
+                <span class="hint">Changing this later means unpairing and starting over —
+                  the role decides the direction of the encryption keys.</span>
+              </div>
+            </div>
+
+            <div style="height:20px"></div>
+            <button class="bp" id="rolebtn">Continue as Sender</button>
+            <p class="m3" style="text-align:center;font-size:11px;margin-top:12px">SIM detected: yes · SM-N975F</p>
+            <div style="height:28px"></div>
+          </div>
+        </section>
+
+        <!-- ── 6 · SENDER CODE ──────────────────────────────────────────── -->
+        <section class="screen" data-s="send">
+          <div class="aurora feed"><div class="blooms">
+            <div class="bloom a"></div><div class="bloom b"></div><div class="bloom c"></div>
+          </div></div><div class="vignette"></div>
+
+          <div class="sb"><span>9:41</span><span class="r">▮▮▮ ⌾ ▰</span></div>
+          <div class="scroll pad">
+            <h2 class="t" style="font-size:28px">Sender</h2>
+            <p class="m2" style="font-size:13px;margin:0 0 16px;line-height:1.5">
+              This phone holds the SIM. Keep it powered and online — everything else depends on it.
+            </p>
+
+            <div class="g stack cardpad">
+              <div style="display:flex;align-items:center;gap:9px">
+                <span class="dot" style="background:var(--bloom-cyan)"></span>
+                <b style="font-size:15px">Pairing code</b></div>
+
+              <div class="codebox" id="codebox">
+                <div class="c mono">K7M4-QW2X</div>
+                <div class="m3" style="font-size:10.5px;margin-top:6px">tap to copy</div>
+              </div>
+
+              <div class="qr"><svg id="qr" viewBox="0 0 25 25" shape-rendering="crispEdges"></svg></div>
+              <p class="hint">Scanning the QR is safer than typing the code — it carries the
+                key itself, so the server cannot get between you.</p>
+
+              <div style="display:flex;gap:8px">
+                <button class="bs" style="flex:1">New code</button>
+                <button class="bs" style="flex:1">Stop accepting</button>
+              </div>
+            </div>
+
+            <div style="height:14px"></div>
+
+            <div class="g stack cardpad">
+              <div style="display:flex;align-items:center;gap:9px">
+                <span class="dot" style="background:var(--bloom-violet)"></span>
+                <b style="font-size:15px">Receivers (2)</b></div>
+              <p class="warn">Check that each number below matches what that phone shows.
+                If one differs, remove it — the connection was tampered with.</p>
+
+              <div style="background:var(--raised);border-radius:18px;padding:14px;
+                          border:1px solid color-mix(in srgb,var(--accent) 40%,transparent)">
+                <div style="display:flex;align-items:center;gap:9px">
+                  <span style="color:var(--bloom-violet)">▢</span><b style="font-size:14px">Galaxy S26 Ultra</b></div>
+                <div class="m3" style="font-size:10.5px;margin-top:10px">Verification number</div>
+                <div class="sas mono">418 902</div>
+                <div style="display:flex;gap:8px;margin-top:10px">
+                  <button class="bp" style="flex:1;padding:10px;font-size:12.5px">Numbers match</button>
+                  <button class="bs dg" style="flex:1;padding:10px;font-size:12.5px">Remove</button>
+                </div>
+              </div>
+
+              <div style="background:var(--raised);border-radius:18px;padding:14px;
+                          border:1px solid rgba(255,255,255,var(--border-a))">
+                <div style="display:flex;align-items:center;gap:9px">
+                  <span style="color:var(--bloom-violet)">▢</span><b style="font-size:14px">Galaxy Tab S9</b>
+                  <span class="tag" style="margin-left:auto">Confirmed</span></div>
+                <div class="m3" style="font-size:10.5px;margin-top:10px">Verification number</div>
+                <div class="sas mono" style="font-size:26px">730 155</div>
+              </div>
+            </div>
+
+            <div style="height:14px"></div>
+
+            <div class="g stack cardpad">
+              <div style="display:flex;align-items:center;gap:9px">
+                <span class="dot" style="background:var(--warning)"></span>
+                <b style="font-size:15px">Keep me running</b></div>
+              <div style="display:flex;align-items:center;gap:8px;color:var(--danger);font-size:12.5px">
+                ✕ Battery exemption missing</div>
+              <p class="hint">Without it, Android can hold this app's connection closed for
+                15 minutes at a stretch, and a call will ring long after it stopped.</p>
+              <div style="display:flex;gap:8px">
+                <button class="bp" style="flex:1;padding:11px;font-size:13px">Grant</button>
+                <button class="bs" style="flex:1;padding:11px;font-size:13px">Samsung settings</button>
+              </div>
+            </div>
+
+            <div style="height:14px"></div>
+            <div class="g stack cardpad">
+              <div style="display:flex;align-items:center;gap:9px">
+                <span class="dot" style="background:var(--bloom-indigo)"></span>
+                <b style="font-size:15px">Call audio</b></div>
+              <div style="display:flex;align-items:center;gap:8px;color:var(--warning);font-size:12.5px">
+                ⚠ Telephony capture blocked — using loopback</div>
+              <p class="hint">Speakerphone loopback — this device's firmware does not expose
+                the call stream. Keep the sender phone in a quiet room.</p>
+            </div>
+            <div style="height:30px"></div>
+          </div>
+        </section>
+
+        <!-- ── 7 · ENTER CODE ───────────────────────────────────────────── -->
+        <section class="screen" data-s="recv">
+          <div class="aurora feed"><div class="blooms">
+            <div class="bloom a"></div><div class="bloom b"></div><div class="bloom c"></div>
+          </div></div><div class="vignette"></div>
+
+          <div class="sb"><span>9:41</span><span class="r">▮▮▮ ⌾ ▰</span></div>
+          <div class="scroll pad" style="display:flex;flex-direction:column">
+            <div style="height:24px"></div>
+            <h2 style="text-align:center;font-size:26px;font-weight:800;letter-spacing:-.5px;margin:0">
+              Enter the pairing code</h2>
+            <p class="m2" style="text-align:center;font-size:13.5px;line-height:1.5;margin:10px 0 30px">
+              Open the app on the phone with the SIM, tap “Create pairing code”, and type what it shows here.
+            </p>
+
+            <div class="cells" id="cells"></div>
+            <div style="height:18px"></div>
+            <button class="bp" id="connect">Connect</button>
+
+            <div style="display:flex;align-items:center;gap:10px;margin:20px 0">
+              <span style="flex:1;height:1px;background:rgba(255,255,255,var(--border-a))"></span>
+              <span class="m3" style="font-size:11px">or</span>
+              <span style="flex:1;height:1px;background:rgba(255,255,255,var(--border-a))"></span>
+            </div>
+
+            <div class="g" style="border-radius:22px">
+              <div style="padding:18px;text-align:center">
+                <div style="font-size:28px;color:var(--accent)">⛶</div>
+                <b style="display:block;font-size:14px;margin-top:10px">Scan the QR instead</b>
+                <p class="hint" style="margin:5px 0 0">Safer: the QR carries the encryption key
+                  itself, so the relay server never has a chance to sit in the middle.</p>
+              </div>
+            </div>
+
+            <div id="sasblock" style="display:none">
+              <div style="height:22px"></div>
+              <div class="g" style="box-shadow:0 0 28px -8px var(--success)">
+                <div style="padding:20px;text-align:center">
+                  <div style="font-size:24px;color:var(--success)">✓</div>
+                  <div class="m2" style="font-size:12px;margin-top:10px">Verification number</div>
+                  <div class="sas mono" style="margin-top:6px">418 902</div>
+                  <p class="warn" style="margin:8px 0 0">Check the sender shows the same six digits.
+                    If it does not, unpair now — someone is intercepting the pairing.</p>
+                </div>
+              </div>
+            </div>
+
+            <div style="flex:1;min-height:20px"></div>
+            <p class="m3" style="text-align:center;font-size:10.5px">hatamidev.com</p>
+            <div style="height:20px"></div>
+          </div>
+        </section>
+
+        <!-- ── 8 · SETTINGS ─────────────────────────────────────────────── -->
+        <section class="screen" data-s="set">
+          <div class="aurora chat"><div class="blooms">
+            <div class="bloom a" style="opacity:calc(var(--bloom-a) * .7)"></div>
+            <div class="bloom b" style="opacity:calc(var(--bloom-a) * .5)"></div>
+          </div></div>
+
+          <div class="sb"><span>9:41</span><span class="r">▮▮▮ ⌾ ▰</span></div>
+          <div class="scroll pad">
+            <h2 class="t">Settings</h2>
+
+            <div class="g cardpad" style="margin-bottom:12px">
+              <b style="font-size:15px">Connection</b><div style="height:10px"></div>
+              <div class="kv"><span class="k">Relay server</span><span class="v">hatamidev.com</span></div>
+              <div class="kv"><span class="k">Backend</span><span class="v">Redis</span></div>
+              <div class="kv"><span class="k">Socket</span><span class="v" style="color:var(--success)">Connected</span></div>
+              <div class="kv"><span class="k">Sender</span><span class="v">Online</span></div>
+              <div class="kv"><span class="k">Sender battery</span><span class="v">78% (charging)</span></div>
+              <div class="kv"><span class="k">SIM</span><span class="v">READY</span></div>
+              <div style="height:12px"></div>
+              <div style="background:color-mix(in srgb,var(--accent) 13%,transparent);border-radius:14px;
+                          padding:11px 14px;color:var(--accent);font-size:13px;font-weight:500">↻ Reconnect now</div>
+            </div>
+
+            <div class="g cardpad" style="margin-bottom:12px">
+              <b style="font-size:15px">End-to-end encryption</b>
+              <p class="hint" style="margin:9px 0 0">AES-256-GCM with HKDF-derived directional
+                keys. The relay server sees ciphertext only and never held the root key.</p>
+              <div style="height:14px"></div>
+              <div class="m2" style="font-size:11px">Verification number</div>
+              <div class="sas mono" style="font-size:32px;letter-spacing:2px">418 902</div>
+              <p class="warn" style="margin:4px 0 0">Open Settings on the sender. If these six
+                digits differ, the pairing was intercepted — unpair immediately.</p>
+              <div style="height:12px"></div>
+              <div class="kv"><span class="k">Key fingerprint</span>
+                <span class="v mono" style="font-size:11px">3A:F1:9C:22:0B:7E:D4:65</span></div>
+              <div class="kv"><span class="k">Rejected envelopes</span><span class="v">0</span></div>
+            </div>
+
+            <div class="g cardpad" style="margin-bottom:12px">
+              <b style="font-size:15px">Background reliability</b><div style="height:10px"></div>
+              <div style="display:flex;align-items:center;gap:8px;color:var(--success);font-size:13px">
+                <span class="dot" style="background:var(--success)"></span> Doze exemption granted</div>
+              <p class="hint" style="margin:10px 0 0">Without this, Android can hold the socket
+                closed for up to 15 minutes at a time and a call will ring long after it stopped.</p>
+            </div>
+
+            <div class="g cardpad">
+              <b style="font-size:15px">Pairing</b>
+              <p class="hint" style="margin:9px 0 12px">Unpairing destroys the room on the server
+                and wipes the keys and the encrypted message cache from this device.</p>
+              <button class="bs dg">Unpair this device</button>
+            </div>
+            <div style="height:40px"></div>
+          </div>
+        </section>
+
+      </div>
+    </div>
+
+    <p class="m3" style="font-size:11.5px;max-width:540px;text-align:center;line-height:1.6">
+      Squircles are real superellipses (n≈4) generated as clip paths — the same curve
+      <span class="mono">SquircleShape.kt</span> draws. Glass switches tone by region: dark
+      smoke over the top band, white frost over the bright bottom one.
+    </p>
+  </main>
+</div>
+
+<script>
+/* ═══════════════════════════════════════════════════════════════════════════
+   Faces — deterministic SVG avatars, so the page needs no external images and
+   works under a strict CSP.
+   ═══════════════════════════════════════════════════════════════════════════ */
+function face(a, b, initials) {
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 140 140">
+    <defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="${a}"/><stop offset="1" stop-color="${b}"/></linearGradient></defs>
+    <rect width="140" height="140" fill="url(#g)"/>
+    <circle cx="70" cy="52" r="26" fill="rgba(255,255,255,.3)"/>
+    <ellipse cx="70" cy="126" rx="44" ry="34" fill="rgba(255,255,255,.24)"/>
+    <text x="70" y="128" font-family="Inter,sans-serif" font-size="18" font-weight="700"
+          fill="rgba(255,255,255,.92)" text-anchor="middle">${initials}</text></svg>`;
+  return `url("data:image/svg+xml,${encodeURIComponent(svg)}")`;
+}
+
+const P = [
+  { n: 'Sara Ahmadi', f: face('#35c8ec', '#5b6be8', 'SA') },
+  { n: 'Reza Karimi', f: face('#9b6bf0', '#ec4899', 'RK') },
+  { n: 'Bank Melli',  f: face('#27d07e', '#0ea5e9', 'BM') },
+  { n: 'Niloofar',    f: face('#ff3b47', '#ffc24b', 'NF') },
+  { n: 'Dad',         f: face('#5b6be8', '#35c8ec', 'DA') },
+  { n: 'Mehdi',       f: face('#0ea5e9', '#9b6bf0', 'ME') },
+];
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Superellipse squircle: |x/a|^n + |y/b|^n = 1
+   A rounded rect uses circular arcs, leaving a curvature break where the arc
+   meets the straight edge. n = 4 is the iOS / One UI icon curve.
+   ═══════════════════════════════════════════════════════════════════════════ */
+function squircle(n = 4, steps = 76) {
+  const pts = [];
+  for (let i = 0; i <= steps; i++) {
+    const t = (2 * Math.PI * i) / steps;
+    const c = Math.cos(t), s = Math.sin(t);
+    const x = Math.sign(c) * Math.pow(Math.abs(c), 2 / n);
+    const y = Math.sign(s) * Math.pow(Math.abs(s), 2 / n);
+    pts.push(`${(50 + x * 50).toFixed(2)}% ${(50 + y * 50).toFixed(2)}%`);
+  }
+  return `polygon(${pts.join(',')})`;
+}
+const SQ = squircle(4);
+
+/* ── Stories ─────────────────────────────────────────────────────────────── */
+const st = document.getElementById('stories');
+const you = document.createElement('div');
+you.className = 'story you';
+you.style.clipPath = SQ;
+you.innerHTML = `<div class="ph" style="background-image:${P[4].f}"></div><div class="sc"></div>
+  <div class="av">＋</div><div class="nm" style="font-size:10.5px">Your story</div>`;
+st.appendChild(you);
+
+P.forEach((p, i) => {
+  const online = i < 3;
+  const el = document.createElement('div');
+  el.className = 'story' + (online ? ' glow' : '');
+  el.style.clipPath = SQ;
+  el.innerHTML =
+    `<div class="ph" style="background-image:${p.f}"></div><div class="sc"></div>
+     <div class="av ${i < 2 ? 'ring' : ''}" style="--pi:${p.f};background-image:${p.f}"></div>
+     ${online ? '<span class="liv"></span>' : ''}
+     <div class="nm">${p.n.split(' ')[0]}</div>`;
+  st.appendChild(el);
+});
+
+/* ── Hero card ───────────────────────────────────────────────────────────── */
+document.getElementById('hero').innerHTML = `
+  <div class="bg" style="background-image:${P[0].f}"></div>
+  <div class="sc"></div>
+  <div class="av" style="background-image:${P[0].f},conic-gradient(from 140deg,var(--bloom-cyan),var(--bloom-indigo),var(--bloom-violet),var(--bloom-cyan))"></div>
+  <div class="g light rail">
+    <button class="liked" title="Call">✆</button><span class="ct">Call</span>
+    <button title="Reply">➤</button><span class="ct">2</span>
+    <button title="Mark read">✓✓</button>
+  </div>
+  <div class="meta">
+    <h3>Sara Ahmadi</h3>
+    <div class="m2" style="font-size:12px;margin-top:3px">now</div>
+    <div style="font-size:14px;line-height:1.36;margin-top:10px;opacity:.94">
+      Perfect, thank you 🙏 I left the key under the mat just in case
+    </div>
+    <div style="height:12px"></div>
+    <span class="pill">➤ Open chat</span>
+  </div>`;
+
+/* ── Conversation rows ───────────────────────────────────────────────────── */
+const CONVS = [
+  { p: 1, m: 'Call me when you land', t: '4m', u: 0, out: false },
+  { p: 2, m: 'Your OTP is 480 291. Do not share it', t: '1h', u: 1, out: false },
+  { p: 3, m: 'Sent the file over', t: '3h', u: 0, out: true },
+  { p: 4, m: 'سلام، فردا میای؟', t: 'Mon', u: 0, out: false },
+  { p: 5, m: 'Thanks, got it', t: '12 Mar', u: 0, out: true },
+];
+const cv = document.getElementById('convs');
+CONVS.forEach(c => {
+  const p = P[c.p];
+  const el = document.createElement('div');
+  el.className = 'g conv' + (c.u ? ' un' : '');
+  el.innerHTML = `<div class="av" style="background-image:${p.f}"></div>
+    <div class="b"><div class="tp"><span class="nm">${p.n}</span><span class="tm">${c.t}</span></div>
+    <div class="pv">${c.out ? '<span style="color:var(--accent)">✓✓</span> ' : ''}${c.m}</div></div>
+    ${c.u ? `<span class="badge">${c.u}</span>` : ''}`;
+  cv.appendChild(el);
+});
+
+/* ── Thread ──────────────────────────────────────────────────────────────── */
+document.getElementById('thav').style.backgroundImage = P[0].f;
+
+const THREAD = [
+  { t: 'day', v: 'Today' },
+  { t: 'in',  v: 'Did the courier come yet?' },
+  { t: 'in',  v: 'I left the key under the mat just in case' },
+  { t: 'out', v: 'Just got here — picking it up now', m: '09:32 ✓✓' },
+  { t: 'vout', d: '0:12' },
+  { t: 'in',  v: 'Perfect, thank you 🙏' },
+  { t: 'vin', d: '0:07' },
+  { t: 'out', v: 'On my way back', m: '09:41 ✓✓', ok: true },
+];
+const mw = document.getElementById('msgs');
+THREAD.forEach(m => {
+  if (m.t === 'day') {
+    mw.insertAdjacentHTML('beforeend', `<div class="g day">${m.v}</div>`);
+    return;
+  }
+  const out = m.t.endsWith('out');
+  const av = `<div class="tav" style="background-image:${out ? P[4].f : P[0].f}"></div>`;
+  if (m.t === 'in' || m.t === 'out') {
+    mw.insertAdjacentHTML('beforeend',
+      `<div class="line ${out ? 'out' : ''}">${out ? '' : av}
+        <div class="bub ${out ? 'out' : 'in'}">${m.v}
+          ${m.m ? `<div class="mt">${m.m.replace('✓✓', m.ok
+            ? '<span style="color:var(--accent)">✓✓</span>' : '✓✓')}</div>` : ''}
+        </div>${out ? av : ''}</div>`);
+  } else {
+    mw.insertAdjacentHTML('beforeend',
+      `<div class="line ${out ? 'out' : ''}">${out ? '' : av}
+        <div class="voice ${out ? 'out' : 'in'}">
+          <button class="pl">▶</button><div class="wave" data-p="${out ? 22 : 12}"></div>
+          <span class="du mono">${m.d}</span>
+        </div>${out ? av : ''}</div>`);
+  }
+});
+
+/* Waveforms — speech-shaped, deterministic, with a floor so silence reads as
+   quiet rather than as a rendering bug. */
+document.querySelectorAll('.wave').forEach(w => {
+  const played = +w.dataset.p || 0;
+  for (let i = 0; i < 32; i++) {
+    const env = 1 - Math.abs(i / 32 - 0.5) * 1.35;
+    const tex = ((i * 37) % 11) / 11;
+    const b = document.createElement('i');
+    b.style.height = (Math.max(0.15, env * (0.42 + tex * 0.58)) * 100) + '%';
+    if (i < played) b.className = 'on';
+    w.appendChild(b);
+  }
+});
+
+/* ── Call screens ────────────────────────────────────────────────────────── */
+document.getElementById('callwall').style.backgroundImage = P[0].f;
+document.getElementById('callav').style.backgroundImage = P[0].f;
+document.getElementById('ringwall').style.backgroundImage = P[1].f;
+document.getElementById('ringav').style.backgroundImage = P[1].f;
+[['callav', SQ], ['ringav', SQ]].forEach(([id, cp]) =>
+  (document.getElementById(id).style.clipPath = cp));
+
+/* ── Mock QR (the real one is generated by ZXing on device) ──────────────── */
+(function () {
+  const svg = document.getElementById('qr');
+  let seed = 20260826;
+  const rnd = () => (seed = (seed * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff;
+  let out = '';
+  const fin = (x, y) => `<rect x="${x}" y="${y}" width="7" height="7" fill="#000"/>
+    <rect x="${x + 1}" y="${y + 1}" width="5" height="5" fill="#fff"/>
+    <rect x="${x + 2}" y="${y + 2}" width="3" height="3" fill="#000"/>`;
+  for (let y = 0; y < 25; y++) for (let x = 0; x < 25; x++) {
+    if ((x < 8 && y < 8) || (x > 16 && y < 8) || (x < 8 && y > 16)) continue;
+    if (rnd() > 0.52) out += `<rect x="${x}" y="${y}" width="1" height="1" fill="#000"/>`;
+  }
+  svg.innerHTML = out + fin(0, 0) + fin(18, 0) + fin(0, 18);
+})();
+
+/* ── Segmented code entry ────────────────────────────────────────────────── */
+const CODE = 'K7M4QW2X';
+const cells = document.getElementById('cells');
+let typed = 0;
+function drawCells() {
+  cells.innerHTML = '';
+  for (let i = 0; i < 8; i++) {
+    const c = document.createElement('div');
+    c.className = 'cell' + (i < typed ? ' f' : '') + (i === typed ? ' a' : '');
+    c.textContent = i < typed ? CODE[i] : '';
+    cells.appendChild(c);
+    if (i === 3) { const g = document.createElement('span'); g.style.width = '4px'; cells.appendChild(g); }
+  }
+  document.getElementById('connect').style.opacity = typed === 8 ? 1 : .4;
+  document.getElementById('sasblock').style.display = typed === 8 ? 'block' : 'none';
+}
+drawCells();
+cells.addEventListener('click', () => { typed = typed >= 8 ? 0 : typed + 1; drawCells(); });
+
+/* ── Role picker ─────────────────────────────────────────────────────────── */
+document.querySelectorAll('.role').forEach(r => r.addEventListener('click', () => {
+  document.querySelectorAll('.role').forEach(x => x.classList.remove('sel'));
+  r.classList.add('sel');
+  document.getElementById('rolebtn').textContent =
+    'Continue as ' + (r.dataset.role === 's' ? 'Sender' : 'Receiver');
+}));
+
+/* ── Tabs on the messages screen ─────────────────────────────────────────── */
+document.querySelectorAll('.seg').forEach(s => s.addEventListener('click', () => {
+  document.querySelectorAll('.seg').forEach(x => x.classList.remove('on'));
+  s.classList.add('on');
+}));
+
+/* ── Dock: the pill slides AND grows to fit the active label ─────────────── */
+const dock = document.getElementById('dock');
+const hl = document.getElementById('hl');
+const dbtns = [...dock.querySelectorAll('button')];
+function placePill(i) {
+  const slot = (dock.clientWidth - 12) / dbtns.length;
+  const w = Math.min(slot * 1.62, dock.clientWidth - 12);
+  const raw = 6 + slot * i - (w - slot) / 2;
+  hl.style.width = w + 'px';
+  hl.style.left = Math.max(6, Math.min(raw, dock.clientWidth - 6 - w)) + 'px';
+}
+dbtns.forEach((b, i) => b.addEventListener('click', () => {
+  dbtns.forEach(x => x.classList.remove('on'));
+  b.classList.add('on');
+  placePill(i);
+}));
+requestAnimationFrame(() => placePill(0));
+addEventListener('resize', () => placePill(dbtns.findIndex(b => b.classList.contains('on'))));
+
+/* ── Screen switcher ─────────────────────────────────────────────────────── */
+const tabs = document.getElementById('tabs');
+tabs.addEventListener('click', e => {
+  const b = e.target.closest('.chip');
+  if (!b) return;
+  tabs.querySelectorAll('.chip').forEach(c => c.setAttribute('aria-selected', 'false'));
+  b.setAttribute('aria-selected', 'true');
+  document.querySelectorAll('.screen').forEach(s => s.classList.toggle('on', s.dataset.s === b.dataset.s));
+  if (b.dataset.s === 'messages') requestAnimationFrame(() => placePill(
+    dbtns.findIndex(x => x.classList.contains('on'))));
+});
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Token controls
+   ═══════════════════════════════════════════════════════════════════════════ */
+const root = document.documentElement;
+const DEFAULTS = {};
+document.querySelectorAll('[data-v]').forEach(i => {
+  DEFAULTS[i.dataset.v] = i.value;
+  const apply = () => {
+    const u = i.dataset.u || '';
+    root.style.setProperty(i.dataset.v, i.value + u);
+    const o = i.parentElement.querySelector('output');
+    if (o) o.textContent = i.value + u;
+    dump();
+  };
+  i.addEventListener('input', apply);
+  apply();
+});
+
+document.getElementById('pause').addEventListener('click', e => {
+  const vp = document.getElementById('vp');
+  vp.classList.toggle('paused');
+  e.target.textContent = vp.classList.contains('paused') ? 'Resume drift' : 'Pause drift';
+});
+
+document.getElementById('reset').addEventListener('click', () => {
+  document.querySelectorAll('[data-v]').forEach(i => {
+    i.value = DEFAULTS[i.dataset.v];
+    i.dispatchEvent(new Event('input'));
+  });
+});
+
+function tokens() {
+  const o = {};
+  document.querySelectorAll('[data-v]').forEach(i => {
+    o[i.dataset.v.replace('--', '')] = i.value + (i.dataset.u || '');
+  });
+  return o;
+}
+function dump() { document.getElementById('out').textContent = JSON.stringify(tokens(), null, 1); }
+
+document.getElementById('copy').addEventListener('click', async e => {
+  try {
+    await navigator.clipboard.writeText(JSON.stringify(tokens(), null, 2));
+    e.target.textContent = 'Copied — paste it to me';
+  } catch {
+    e.target.textContent = 'Select the block below';
+  }
+  setTimeout(() => (e.target.textContent = 'Copy tokens'), 2200);
+});
+
+document.getElementById('codebox').addEventListener('click', e => {
+  navigator.clipboard?.writeText('K7M4-QW2X');
+  const d = e.currentTarget.querySelector('.m3');
+  d.textContent = 'copied ✓';
+  setTimeout(() => (d.textContent = 'tap to copy'), 1600);
+});
+
+dump();
+</script>

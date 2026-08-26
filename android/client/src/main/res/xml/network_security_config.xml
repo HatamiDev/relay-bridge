@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Cleartext is disabled everywhere. TLS terminates either at the relay server
+    or at the reverse proxy in front of it.
+
+    Certificate pinning is recommended once the relay host has a stable cert:
+    uncomment the domain-config below and insert the base64 SPKI hashes of your
+    leaf and a backup key. Always pin two — pinning one and losing it bricks the
+    app for every paired device.
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="false">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+
+    <!--
+    <domain-config cleartextTrafficPermitted="false">
+        <domain includeSubdomains="true">hatamidev.com</domain>
+        <pin-set expiration="2027-01-01">
+            <pin digest="SHA-256">BASE64_SPKI_HASH_OF_YOUR_LEAF_CERT=</pin>
+            <pin digest="SHA-256">BASE64_SPKI_HASH_OF_YOUR_BACKUP_KEY=</pin>
+        </pin-set>
+    </domain-config>
+    -->
+</network-security-config>

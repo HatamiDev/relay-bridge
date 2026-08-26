@@ -1,0 +1,57 @@
+# systemd unit for the relay signaling server on hatamidev.com.
+# Install: copy to /etc/systemd/system/relay-signaling.service, then
+#   systemctl daemon-reload && systemctl enable --now relay-signaling
+# (deploy/install.sh does this for you.)
+
+[Unit]
+Description=Relay signaling server (SMS & call bridge)
+Documentation=https://hatamidev.com
+# Redis is optional (server.js falls back to the in-process store when
+# REDIS_URL is unset), but on this host it's configured, so make the boot
+# order sane without hard-failing the unit if redis is briefly unavailable.
+After=network-online.target redis-server.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=relay
+Group=relay
+WorkingDirectory=/opt/relay/server
+EnvironmentFile=/opt/relay/server/.env
+ExecStart=/usr/bin/node server.js
+Restart=always
+RestartSec=3
+# A stuck reconnect loop (Redis, TURN, etc.) should not be allowed to spin
+# forever without ever getting logged as a real failure.
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+# ── Hardening ────────────────────────────────────────────────────────────
+# No capability this process needs requires root, and it never re-execs
+# itself, so deny privilege escalation outright.
+NoNewPrivileges=true
+# Mounts the whole filesystem read-only for this unit except /proc, /sys
+# special-cases systemd itself manages; combine with ReadWritePaths below to
+# carve out exactly the directories the app actually writes to.
+ProtectSystem=strict
+ReadWritePaths=/opt/relay/server/data
+# The relay user has no meaningful home directory content to protect or leak.
+ProtectHome=true
+# Give the unit its own /tmp, invisible to (and isolated from) every other
+# process on the box — nothing here should ever need to share scratch files.
+PrivateTmp=true
+# Defense in depth beyond ProtectSystem: block the small number of syscalls
+# a Node HTTP/WebSocket relay never legitimately needs.
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+RemoveIPC=true
+
+# stdout/stderr → journald; `journalctl -u relay-signaling -f` to tail.
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=relay-signaling
+
+[Install]
+WantedBy=multi-user.target
