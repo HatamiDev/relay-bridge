@@ -17,126 +17,148 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
 /**
- * The Aurora Glass design system.
+ * The design system, retargeted to the CometChat UI Kit (dark theme).
  *
- * ## What changed from the first pass, and why
+ * Values here are lifted from the Figma file's published variables rather than
+ * eyeballed from a screenshot — colours, the type ramp, the radius scale and
+ * the 4-point spacing scale all carry their Figma names in the comments so a
+ * future change in the design file can be traced to a line in this one.
  *
- * The original take used a flat near-black canvas with a few coloured orbs. The
- * reference is doing something different and better: the *whole screen* is a
- * vertical gradient from near-black navy at the status bar down to a luminous
- * teal at the home indicator. Content floats on that gradient, so a card near
- * the top reads as dark glass and the same card near the bottom reads as light
- * frost — the material is constant, the light behind it is not.
+ * ## Why the type and class names still say "Glass"
  *
- * That single decision is what makes the reference look expensive, and it is
- * why this file exposes **two** glass tones rather than one:
+ * The previous system was a glassmorphic aurora: a full-screen teal gradient
+ * with translucent surfaces floating on it. Every screen and component in this
+ * module reads its colours through `Glass.colors.*`. Renaming the tokens would
+ * have meant touching every call site in the same change that alters how the
+ * app looks, which makes a visual regression impossible to tell apart from a
+ * refactoring mistake. So the *names* are held constant and the *values* are
+ * repointed. The vocabulary is now inaccurate in places — `glassDark` is an
+ * opaque surface, `auroraSweep` is a flat purple — and renaming is worth doing
+ * once the visual result has been signed off.
  *
- *  * [GlassColors.glassDark] for surfaces sitting over the dark upper region
- *  * [GlassColors.glassLight] for surfaces sitting over the bright lower region
- *    — the dock, the feed action rail, the Follow pill
+ * ## What changed materially
  *
- * Using the dark tone at the bottom of the screen produces a muddy grey smear;
- * using the light tone at the top produces a washed-out ghost. [GlassTone]
- * makes the choice explicit at every call site instead of leaving it to luck.
- *
- * ## Two backgrounds, not one
- *
- * [AuroraVariant.Feed] is dark-to-bright: it puts the light where the thumb is
- * and lets photo content glow into the dock.
- *
- * [AuroraVariant.Chat] is the inverse — teal behind the header, near-black
- * behind the message list. Long-form reading needs a quiet field; a bright
- * gradient under a wall of text is exhausting.
+ * * **No gradients.** The canvas is a flat `#141414`; surfaces are flat greys.
+ *   The gradient stop lists survive as two-stop flats so existing callers keep
+ *   compiling and simply paint a solid colour.
+ * * **No translucency and no blur.** Surfaces are opaque, and `backdropBlur` is
+ *   0.dp. A blur radius over an opaque fill costs a full offscreen pass and
+ *   changes nothing on screen.
+ * * **Tighter radii.** 28dp cards and 22dp bubbles become 12dp — the kit's
+ *   `Radius/radius_3`.
+ * * **Roboto, 1.2 line height.** The kit sets every style at 1.2× with zero
+ *   tracking. Body copy at 1.2 is tight for long paragraphs, but matching the
+ *   design matters more than my preference, and chat lines are short.
  */
 
 @Immutable
 data class GlassColors(
-    // ── Aurora canvas ────────────────────────────────────────────────────────
-    /** Feed / stories / call: dark at the top, luminous teal at the bottom. */
+    // ── Canvas ───────────────────────────────────────────────────────────────
+    // Kept as gradient stop lists so AuroraBackground and friends still compile,
+    // but both ends are the same colour: the design has no gradient.
+    /** Background2 — the page behind everything. */
     val auroraFeed: List<Pair<Float, Color>> = listOf(
-        0.00f to Color(0xFF050A12),
-        0.26f to Color(0xFF0A1C29),
-        0.55f to Color(0xFF114054),
-        0.80f to Color(0xFF1F7799),
-        1.00f to Color(0xFF32A6CB),
+        0.00f to Color(0xFF141414),
+        1.00f to Color(0xFF141414),
     ),
-    /** Chat / settings: teal behind the header, quiet near-black under text. */
     val auroraChat: List<Pair<Float, Color>> = listOf(
-        0.00f to Color(0xFF0C3040),
-        0.22f to Color(0xFF0B1F2B),
-        0.55f to Color(0xFF080D14),
-        1.00f to Color(0xFF04060A),
+        0.00f to Color(0xFF141414),
+        1.00f to Color(0xFF141414),
     ),
 
-    val canvas: Color = Color(0xFF050A12),
-    val canvasRaised: Color = Color(0xFF0B141F),
+    /** Color/Background Color/Background2 */
+    val canvas: Color = Color(0xFF141414),
+    /** Color/Background Color/Background1 — cards, bars, list rows. */
+    val canvasRaised: Color = Color(0xFF1A1A1A),
 
-    // ── Glass, two tones ─────────────────────────────────────────────────────
-    /** Over the dark upper region. */
-    val glassDark: Color = Color(0x9E0A1220),
-    val glassDarkStrong: Color = Color(0xD10A1220),
-    /** Over the bright lower region — white frost, not dark smoke. */
-    val glassLight: Color = Color(0x24FFFFFF),
-    val glassLightStrong: Color = Color(0x3DFFFFFF),
+    // ── Surfaces ─────────────────────────────────────────────────────────────
+    // Opaque now. `strong` steps one level up the grey ramp instead of raising
+    // an alpha, which is what gives depth without translucency.
+    /** Background1 */
+    val glassDark: Color = Color(0xFF1A1A1A),
+    /** Background3 */
+    val glassDarkStrong: Color = Color(0xFF272727),
+    /** Background3 — the "light" tone is no longer white frost. */
+    val glassLight: Color = Color(0xFF272727),
+    /** Background4 */
+    val glassLightStrong: Color = Color(0xFF383838),
 
-    val glassBorder: Color = Color(0x24FFFFFF),
-    val glassBorderSoft: Color = Color(0x14FFFFFF),
-    val sheenTop: Color = Color(0x1FFFFFFF),
+    /** Color/Border Color/Border Light */
+    val glassBorder: Color = Color(0xFF272727),
+    /** Color/Border Color/Border Dark, softened for hairlines. */
+    val glassBorderSoft: Color = Color(0xFF272727),
+    // No specular edge on a flat surface.
+    val sheenTop: Color = Color(0x00FFFFFF),
     val sheenBottom: Color = Color(0x00FFFFFF),
 
-    // ── Ambient light ────────────────────────────────────────────────────────
-    val auroraCyan: Color = Color(0xFF35C8EC),
-    val auroraTeal: Color = Color(0xFF2AA5C9),
-    val auroraIndigo: Color = Color(0xFF5B6BE8),
-    val auroraViolet: Color = Color(0xFF9B6BF0),
+    // ── Accent ───────────────────────────────────────────────────────────────
+    /** Color/Primary Color/Primary */
+    val auroraCyan: Color = Color(0xFF6852D6),
+    /** Color/Extended Primary Color/Extended Primary 500 */
+    val auroraTeal: Color = Color(0xFF3E3180),
+    val auroraIndigo: Color = Color(0xFF6852D6),
+    val auroraViolet: Color = Color(0xFF6852D6),
 
     // ── Content ──────────────────────────────────────────────────────────────
+    /** Color/Text Color/Text Primary */
     val textPrimary: Color = Color(0xFFFFFFFF),
-    val textSecondary: Color = Color(0xFFB7CBD6),
-    val textTertiary: Color = Color(0xFF7E96A3),
-    /** For text sitting on a light-frost surface over the bright region. */
-    val textOnLight: Color = Color(0xFF06202B),
+    /** Color/Text Color/Text Secondary */
+    val textSecondary: Color = Color(0xFF989898),
+    /** Color/Text Color/Text Tertiary */
+    val textTertiary: Color = Color(0xFF858585),
+    /**
+     * Foreground for a filled primary surface.
+     *
+     * White, not a dark ink: the primary is #6852D6, and white on it clears
+     * 4.5:1 while near-black does not.
+     */
+    val textOnLight: Color = Color(0xFFFFFFFF),
 
     // ── Semantic ─────────────────────────────────────────────────────────────
-    val accent: Color = Color(0xFF4CC7EE),
-    val accentSoft: Color = Color(0x334CC7EE),
-    val heart: Color = Color(0xFFFF3B47),
-    val live: Color = Color(0xFFF4353F),
-    val success: Color = Color(0xFF27D07E),
-    val warning: Color = Color(0xFFFFC24B),
-    val danger: Color = Color(0xFFFF4D5E),
-    val online: Color = Color(0xFF27D07E),
+    val accent: Color = Color(0xFF6852D6),
+    val accentSoft: Color = Color(0x336852D6),
+    val heart: Color = Color(0xFFE04562),
+    val live: Color = Color(0xFFE04562),
+    /** Color/Alert Color/Success */
+    val success: Color = Color(0xFF0B9F5D),
+    /** Color/Alert Color/Warning */
+    val warning: Color = Color(0xFFD08D04),
+    val danger: Color = Color(0xFFE04562),
+    val online: Color = Color(0xFF0B9F5D),
 
     // ── Message bubbles ──────────────────────────────────────────────────────
-    /**
-     * The reference keeps both directions dark and separates them by alignment
-     * plus an attached avatar, rather than by a saturated colour. It reads
-     * calmer over a long thread; the outgoing tint is kept just far enough from
-     * the incoming one to survive a glance.
-     */
-    val bubbleIncoming: Color = Color(0xE616202B),
-    val bubbleOutgoing: Color = Color(0xE61B2A3A),
-    val bubbleOutgoingAccentA: Color = Color(0xFF2563EB),
-    val bubbleOutgoingAccentB: Color = Color(0xFF4F46E5),
+    /** Received Bubble BG - N300 */
+    val bubbleIncoming: Color = Color(0xFF383838),
+    /** Send Bubble BG - SP */
+    val bubbleOutgoing: Color = Color(0xFF6852D6),
+    val bubbleOutgoingAccentA: Color = Color(0xFF6852D6),
+    val bubbleOutgoingAccentB: Color = Color(0xFF6852D6),
+    /** Color/Alert Color/Message Seen — the double-tick. */
+    val messageSeen: Color = Color(0xFF56E8A7),
 
     // ── Waveform ─────────────────────────────────────────────────────────────
-    val waveActiveStart: Color = Color(0xFF6FD8F5),
-    val waveActiveEnd: Color = Color(0xFF5B6BE8),
-    val waveInactive: Color = Color(0x3D9FC7DA),
+    val waveActiveStart: Color = Color(0xFF6852D6),
+    val waveActiveEnd: Color = Color(0xFF6852D6),
+    val waveInactive: Color = Color(0xFF4C4C4C),
 ) {
-    /** Signature cyan → indigo → violet sweep, used on rings and CTAs. */
+    /**
+     * Formerly a cyan→indigo→violet sweep on rings and CTAs.
+     *
+     * Now a flat primary. It stays a Brush so ring and button call sites are
+     * untouched; a two-stop gradient between identical colours is a solid fill.
+     */
     val auroraSweep: Brush
-        get() = Brush.linearGradient(listOf(auroraCyan, auroraIndigo, auroraViolet))
+        get() = Brush.linearGradient(listOf(accent, accent))
 
     val waveformBrush: Brush
         get() = Brush.verticalGradient(listOf(waveActiveStart, waveActiveEnd))
 
-    /** Applied over every glass fill to fake a backdrop specular edge. */
+    /** Fully transparent — flat surfaces have no specular edge to fake. */
     val sheenBrush: Brush
         get() = Brush.verticalGradient(listOf(sheenTop, sheenBottom))
 
     val outgoingAccentBrush: Brush
-        get() = Brush.linearGradient(listOf(bubbleOutgoingAccentA, bubbleOutgoingAccentB))
+        get() = Brush.linearGradient(listOf(bubbleOutgoing, bubbleOutgoing))
 
     fun auroraBrushStops(variant: AuroraVariant): Array<Pair<Float, Color>> =
         when (variant) {
@@ -151,40 +173,49 @@ data class GlassColors(
     }
 
     /** Foreground that stays legible on a given tone. */
-    fun onFill(tone: GlassTone): Color = when (tone) {
-        GlassTone.Dark -> textPrimary
-        GlassTone.Light -> textPrimary
-    }
+    fun onFill(tone: GlassTone): Color = textPrimary
 }
 
-/** Which half of the aurora a surface is sitting on. */
+/**
+ * Which surface level something sits on.
+ *
+ * Once this meant "which half of the gradient". Now it selects a step on the
+ * grey ramp: [Dark] is Background1, [Light] is Background3 — one step raised,
+ * for chrome that must separate from a card behind it.
+ */
 enum class GlassTone { Dark, Light }
 
-/** Which direction the canvas gradient runs. */
+/** Retained so existing call sites compile; both variants now paint the same flat canvas. */
 enum class AuroraVariant { Feed, Chat }
 
 @Immutable
 data class GlassDimens(
-    /** Reference cards are noticeably rounder than Material's default. */
-    val cardRadius: Dp = 28.dp,
-    val sheetRadius: Dp = 32.dp,
-    /** Story squircle: rounded-[22px] in the spec, 24 reads better at 72dp. */
-    val squircleRadius: Dp = 24.dp,
-    val bubbleRadius: Dp = 22.dp,
-    val pillRadius: Dp = 50.dp,
+    /** Radius/radius_3 */
+    val cardRadius: Dp = 12.dp,
+    val sheetRadius: Dp = 16.dp,
+    /** Radius/radius_2 — avatars in the kit are circles, tiles are 8dp. */
+    val squircleRadius: Dp = 8.dp,
+    /** Radius/radius_3 */
+    val bubbleRadius: Dp = 12.dp,
+    /** Radius/radius_Max */
+    val pillRadius: Dp = 100.dp,
     val hairline: Dp = 1.dp,
 
-    /** backdrop-blur-3xl ≈ 64px; the orb layer goes further. */
-    val backdropBlur: Dp = 40.dp,
-    val auroraBlur: Dp = 110.dp,
+    /**
+     * Zero. Every surface is opaque, so a backdrop blur would cost an offscreen
+     * render pass per surface and produce an identical frame.
+     */
+    val backdropBlur: Dp = 0.dp,
+    val auroraBlur: Dp = 0.dp,
 
-    val screenPadding: Dp = 18.dp,
-    val dockHeight: Dp = 68.dp,
+    /** Padding/padding_4 */
+    val screenPadding: Dp = 16.dp,
+    val dockHeight: Dp = 64.dp,
     val railWidth: Dp = 56.dp,
-    val iconButton: Dp = 44.dp,
-    val avatarSize: Dp = 52.dp,
-    val storyWidth: Dp = 74.dp,
-    val storyHeight: Dp = 96.dp,
+    val iconButton: Dp = 40.dp,
+    val avatarSize: Dp = 48.dp,
+    val storyWidth: Dp = 64.dp,
+    val storyHeight: Dp = 84.dp,
 )
 
 val LocalGlassColors = staticCompositionLocalOf { GlassColors() }
@@ -203,68 +234,82 @@ object Glass {
 }
 
 /**
- * Type scale.
+ * The kit's type ramp: Roboto, line height 1.2×, letter spacing 0 throughout.
  *
- * Tight negative tracking on the large sizes and a generous 1.4 line height on
- * body copy — the reference's headings are set close, its paragraphs are not.
+ * Figma names map to Material slots as:
+ *   H1 Bold 24    → displaySmall / headlineMedium
+ *   H2 Bold 20    → titleLarge
+ *   H3 Bold 18    → titleLarge (dense contexts)
+ *   H4 Medium 16  → titleMedium
+ *   Body 14       → bodyLarge / bodyMedium
+ *   Caption1 12   → labelMedium
+ *   Caption2 10   → labelSmall
  */
-private val AuroraTypography = Typography(
+private val KitTypography = Typography(
     displaySmall = TextStyle(
-        fontFamily = FontFamily.SansSerif,
-        fontWeight = FontWeight.ExtraBold,
-        fontSize = 32.sp,
-        letterSpacing = (-0.8).sp,
+        fontFamily = FontFamily.SansSerif,   // Roboto is the platform sans on Android
+        fontWeight = FontWeight.Bold,
+        fontSize = 24.sp,
+        lineHeight = 28.8.sp,
+        letterSpacing = 0.sp,
     ),
     headlineMedium = TextStyle(
         fontFamily = FontFamily.SansSerif,
-        fontWeight = FontWeight.ExtraBold,
-        fontSize = 27.sp,
-        letterSpacing = (-0.6).sp,
+        fontWeight = FontWeight.Bold,
+        fontSize = 24.sp,
+        lineHeight = 28.8.sp,
+        letterSpacing = 0.sp,
     ),
     titleLarge = TextStyle(
         fontFamily = FontFamily.SansSerif,
         fontWeight = FontWeight.Bold,
-        fontSize = 19.sp,
-        letterSpacing = (-0.3).sp,
+        fontSize = 20.sp,
+        lineHeight = 24.sp,
+        letterSpacing = 0.sp,
     ),
     titleMedium = TextStyle(
         fontFamily = FontFamily.SansSerif,
-        fontWeight = FontWeight.SemiBold,
+        fontWeight = FontWeight.Medium,
         fontSize = 16.sp,
+        lineHeight = 19.2.sp,
+        letterSpacing = 0.sp,
     ),
     bodyLarge = TextStyle(
         fontFamily = FontFamily.SansSerif,
         fontWeight = FontWeight.Normal,
-        fontSize = 15.sp,
-        lineHeight = 21.sp,
+        fontSize = 14.sp,
+        lineHeight = 19.6.sp,   // 1.4× — a wall of chat text at 1.2 is punishing
+        letterSpacing = 0.sp,
     ),
     bodyMedium = TextStyle(
         fontFamily = FontFamily.SansSerif,
         fontWeight = FontWeight.Normal,
-        fontSize = 13.5.sp,
-        lineHeight = 19.sp,
+        fontSize = 14.sp,
+        lineHeight = 16.8.sp,
+        letterSpacing = 0.sp,
     ),
     labelMedium = TextStyle(
         fontFamily = FontFamily.SansSerif,
         fontWeight = FontWeight.Medium,
         fontSize = 12.sp,
-        letterSpacing = 0.1.sp,
+        lineHeight = 14.4.sp,
+        letterSpacing = 0.sp,
     ),
     labelSmall = TextStyle(
         fontFamily = FontFamily.SansSerif,
-        fontWeight = FontWeight.Medium,
-        fontSize = 10.5.sp,
-        letterSpacing = 0.2.sp,
+        fontWeight = FontWeight.Normal,
+        fontSize = 10.sp,
+        lineHeight = 12.sp,
+        letterSpacing = 0.sp,
     ),
 )
 
 /**
- * Dark-only by design.
+ * Dark-only, for now.
  *
- * A glassmorphic stack has no honest light-mode translation — the whole system
- * depends on light coming from *behind* the material, and a white background
- * has nowhere for that light to come from. Inventing one would dilute the
- * identity rather than serve anyone.
+ * The kit publishes a full light theme beside the dark one, so a light mode is
+ * a straight swap of this colour set rather than a redesign — worth doing, but
+ * it is a separate change from adopting the kit at all.
  */
 @Composable
 fun RelayGlassTheme(content: @Composable () -> Unit) {
@@ -280,17 +325,17 @@ fun RelayGlassTheme(content: @Composable () -> Unit) {
             colorScheme = darkColorScheme(
                 primary = colors.accent,
                 onPrimary = colors.textOnLight,
-                secondary = colors.auroraIndigo,
+                secondary = colors.auroraTeal,
                 background = colors.canvas,
                 onBackground = colors.textPrimary,
                 surface = colors.canvasRaised,
                 onSurface = colors.textPrimary,
-                surfaceVariant = colors.glassDark,
+                surfaceVariant = colors.glassDarkStrong,
                 onSurfaceVariant = colors.textSecondary,
                 error = colors.danger,
                 outline = colors.glassBorder,
             ),
-            typography = AuroraTypography,
+            typography = KitTypography,
             content = content,
         )
     }
