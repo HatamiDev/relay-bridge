@@ -117,13 +117,14 @@ data class GlassColors(
     // ── Semantic ─────────────────────────────────────────────────────────────
     val accent: Color = Color(0xFF6852D6),
     val accentSoft: Color = Color(0x336852D6),
-    val heart: Color = Color(0xFFE04562),
-    val live: Color = Color(0xFFE04562),
+    val heart: Color = Color(0xFFC73C3E),
+    val live: Color = Color(0xFFC73C3E),
     /** Color/Alert Color/Success */
     val success: Color = Color(0xFF0B9F5D),
     /** Color/Alert Color/Warning */
     val warning: Color = Color(0xFFD08D04),
-    val danger: Color = Color(0xFFE04562),
+    /** Color/Alert Color/Error — the kit's decline red. */
+    val danger: Color = Color(0xFFC73C3E),
     val online: Color = Color(0xFF0B9F5D),
 
     // ── Message bubbles ──────────────────────────────────────────────────────

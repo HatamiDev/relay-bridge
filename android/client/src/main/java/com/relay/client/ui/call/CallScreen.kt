@@ -419,30 +419,77 @@ private fun Metric(label: String, value: String, unit: String) {
     }
 }
 
+/**
+ * Answer / decline, as the kit draws them.
+ *
+ * The kit puts these on a small popup card over the call list: two 8dp
+ * rounded rectangles, text-only, Decline on the left. That works for a chat
+ * app where a call is a foreground event.
+ *
+ * It cannot work here. A relayed cellular call arrives on a phone that is
+ * locked, in a pocket, screen off — the notification is a full-screen intent
+ * and the user is answering by feel and glance, not by reading a card. So the
+ * layout stays full-screen and the buttons stay large, while the *vocabulary*
+ * is the kit's: its error and success reds and greens, its 8dp radius, its
+ * 14sp Medium button label.
+ *
+ * Icons are kept alongside the labels because at arm's length, half awake, a
+ * green pill and a red pill are distinguishable before either word is.
+ */
 @Composable
 private fun IncomingControls(onDecline: () -> Unit, onAnswer: () -> Unit) {
     val colors = Glass.colors
     Row(
-        Modifier.fillMaxWidth().padding(horizontal = 24.dp),
-        horizontalArrangement = Arrangement.SpaceEvenly,
+        Modifier.fillMaxWidth().padding(horizontal = 20.dp),
+        horizontalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        CircleIconButton(
+        CallActionButton(
+            label = "Decline",
             icon = Icons.Rounded.CallEnd,
-            contentDescription = "Decline",
-            size = ANSWER_BUTTON,
-            tint = Color.White,
             background = colors.danger,
-            glowColor = colors.danger,
             onClick = onDecline,
+            modifier = Modifier.weight(1f),
         )
-        CircleIconButton(
+        CallActionButton(
+            label = "Accept",
             icon = Icons.Rounded.Call,
-            contentDescription = "Answer",
-            size = ANSWER_BUTTON,
-            tint = Color.White,
             background = colors.success,
-            glowColor = colors.success,
             onClick = onAnswer,
+            modifier = Modifier.weight(1f),
+        )
+    }
+}
+
+@Composable
+private fun CallActionButton(
+    label: String,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    background: Color,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val colors = Glass.colors
+    Row(
+        modifier
+            .height(56.dp)
+            .clip(RoundedCornerShape(8.dp))
+            .background(background)
+            .clickable(onClick = onClick),
+        horizontalArrangement = Arrangement.Center,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(
+            icon,
+            contentDescription = null,
+            tint = colors.textOnLight,
+            modifier = Modifier.size(22.dp),
+        )
+        Spacer(Modifier.width(8.dp))
+        Text(
+            label,
+            color = colors.textOnLight,
+            fontSize = 14.sp,
+            fontWeight = FontWeight.Medium,
         )
     }
 }
