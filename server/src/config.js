@@ -87,11 +87,28 @@ const config = Object.freeze({
   }),
 
   // Optional: `./store.js` selects the Redis-backed store (`./redisStore.js`)
-  // over the in-process one the moment REDIS_URL is set. Leaving it empty
-  // keeps the single-node, snapshot-to-disk behaviour — Redis is never
-  // required to boot.
+  // over the in-process one the moment a Redis endpoint is configured. Leaving
+  // both empty keeps the single-node, snapshot-to-disk behaviour — Redis is
+  // never required to boot.
+  //
+  // Two ways to reach Redis, because hosts differ:
+  //
+  //   REDIS_URL          redis://[:password@]host:port[/db]  — TCP
+  //   REDIS_SOCKET_PATH  /home/user/redis/redis.sock         — unix socket
+  //
+  // Shared cPanel hosting commonly gives a per-account Redis on a unix socket
+  // with no TCP listener at all, and a `redis://` URL cannot express a
+  // filesystem path — hence the separate variable rather than a URL scheme.
+  // When both are set the socket wins: it is the more specific answer.
+  //
+  // REDIS_DB matters when the Redis instance is shared with another app on the
+  // same account. A different database index keeps the two key spaces from
+  // ever seeing each other, on top of the `relay:` key prefix.
   redis: Object.freeze({
     url: optional('REDIS_URL', ''),
+    socketPath: optional('REDIS_SOCKET_PATH', ''),
+    password: optional('REDIS_PASSWORD', ''),
+    database: int('REDIS_DB', 0),
     keyPrefix: optional('REDIS_KEY_PREFIX', 'relay:'),
     tlsRejectUnauthorized: optional('REDIS_TLS_REJECT_UNAUTHORIZED', 'true') !== 'false',
   }),

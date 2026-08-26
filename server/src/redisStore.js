@@ -41,6 +41,7 @@
  */
 
 const { createClient } = require('redis');
+const { redisClientOptions, redisEndpointLabel } = require('./redisOptions');
 const config = require('./config');
 const logger = require('./logger');
 const { generateRoomId, normalizePairCode, fingerprint } = require('./crypto');
@@ -52,18 +53,13 @@ class RedisStore {
   constructor() {
     this.prefix = config.redis.keyPrefix;
 
-    this.client = createClient({
-      url: config.redis.url,
-      socket: {
-        // Exponential backoff, capped at 5s, so a coturn-style flapping link
-        // doesn't hammer the Redis host with immediate reconnect storms.
-        reconnectStrategy: (retries) => Math.min(retries * 200, 5000),
-        tls: config.redis.url.startsWith('rediss://'),
-        rejectUnauthorized: config.redis.tlsRejectUnauthorized,
-      },
-    });
+    // Built by ./redisOptions.js so the store and the Socket.IO adapter can
+    // never end up on different instances or databases. Includes the capped
+    // exponential backoff that keeps a flapping link from turning into a
+    // reconnect storm against the Redis host.
+    this.client = createClient(redisClientOptions());
 
-    this.client.on('connect', () => logger.info('redis connecting'));
+    this.client.on('connect', () => logger.info({ endpoint: redisEndpointLabel() }, 'redis connecting'));
     this.client.on('ready', () => logger.info('redis ready'));
     this.client.on('reconnecting', () => logger.warn('redis reconnecting'));
     this.client.on('error', (err) => logger.error({ err: err.message }, 'redis error'));

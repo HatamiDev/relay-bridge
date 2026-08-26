@@ -25,6 +25,7 @@ const { Server } = require('socket.io');
 const config = require('./config');
 const logger = require('./logger');
 const store = require('./store');
+const { redisEnabled, redisClientOptions, redisEndpointLabel } = require('./redisOptions');
 const fcm = require('./fcm');
 const { verifyDeviceToken } = require('./auth');
 const { buildIceServers } = require('./turn');
@@ -106,14 +107,14 @@ function isValidEnvelope(envelope) {
  * is worse than one that refuses to start.
  */
 async function attachRedisAdapter(io) {
-  if (!config.redis.url) return false;
+  if (!redisEnabled()) return false;
 
   const { createAdapter } = require('@socket.io/redis-adapter');
   const { createClient } = require('redis');
 
   // The adapter needs its own pair of connections: a client in subscriber mode
   // cannot issue ordinary commands, so it can never be the store's client.
-  const pub = createClient({ url: config.redis.url });
+  const pub = createClient(redisClientOptions());
   const sub = pub.duplicate();
 
   pub.on('error', (err) => logger.error({ err: err.message }, 'redis adapter pub error'));
@@ -121,7 +122,7 @@ async function attachRedisAdapter(io) {
 
   await Promise.all([pub.connect(), sub.connect()]);
   io.adapter(createAdapter(pub, sub));
-  logger.info('socket.io redis adapter attached — cross-process delivery enabled');
+  logger.info({ endpoint: redisEndpointLabel() }, 'socket.io redis adapter attached — cross-process delivery enabled');
   return true;
 }
 
@@ -189,10 +190,19 @@ async function handleConnection(nsp, socket) {
   socket.join(deviceKey(roomId, deviceId));
 
   // Evict a previous socket for the same device (app restart, network flip).
+  //
+  // `nsp.in(id).disconnectSockets()` rather than `nsp.sockets.get(id)`: the
+  // local map only holds sockets on *this* worker, so under a multi-worker
+  // server the old socket usually is not there and the stale connection
+  // survives — two live sockets for one device, each believing it is current,
+  // with delivery landing on whichever the store last recorded. Going through
+  // the namespace routes the disconnect via the adapter, so it reaches the
+  // worker actually holding the socket. Every socket joins a room named after
+  // its own id, which is what makes addressing one by id work at all.
   const existing = await store.getDevice(roomId, deviceId);
   const previous = existing?.socketId;
   if (previous && previous !== socket.id) {
-    nsp.sockets.get(previous)?.disconnect(true);
+    nsp.in(previous).disconnectSockets(true);
   }
 
   await store.markOnline(roomId, deviceId, socket.id);

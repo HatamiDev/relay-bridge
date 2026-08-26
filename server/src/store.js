@@ -10,19 +10,19 @@
  * both implement. `server.js` and `src/signaling.js` talk only to this
  * selector, so they never branch on which backend is live.
  *
- * REDIS_URL unset → memory store (default, matches pre-Redis behaviour).
- * REDIS_URL set   → Redis store. Redis is opt-in, never mandatory to boot.
+ * No Redis configured        → memory store (matches pre-Redis behaviour).
+ * REDIS_SOCKET_PATH or _URL  → Redis store. Redis is opt-in, never required to boot.
  *
  * A warning about "more than one process", because the store alone is not
  * enough: Socket.IO's default adapter also keeps its room table in per-process
  * memory. Sharing the *store* across workers without also sharing the
  * *adapter* produces a relay where both devices authenticate happily and every
  * message vanishes. `src/signaling.js` attaches the Redis adapter whenever
- * REDIS_URL is set, which is what actually makes multi-process safe — running
+ * Redis is configured, which is what actually makes multi-process safe — running
  * the memory store under a multi-worker server (LiteSpeed/Passenger will do
  * this on its own) is never safe, no matter how the app is deployed.
  */
 
-const config = require('./config');
+const { redisEnabled } = require('./redisOptions');
 
-module.exports = config.redis.url ? require('./redisStore') : require('./memoryStore');
+module.exports = redisEnabled() ? require('./redisStore') : require('./memoryStore');
