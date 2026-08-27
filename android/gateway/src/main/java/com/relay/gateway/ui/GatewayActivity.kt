@@ -379,7 +379,10 @@ private fun GatewayScreen() {
             // ── Permissions ──────────────────────────────────────────────────
             StepCard("Permissions", accent = colors.accent) {
                 Text(
-                    "SMS, phone state, microphone, contacts and notifications.",
+                    "SMS, phone state, call log, microphone, contacts and " +
+                        "notifications. Call log is what carries the caller's " +
+                        "number — without it every call reaches the receiver as " +
+                        "\"unknown\".",
                     color = colors.textTertiary, fontSize = 12.5.sp,
                 )
                 Spacer(Modifier.height(12.dp))
@@ -390,14 +393,17 @@ private fun GatewayScreen() {
             StepCard("Default phone app", accent = colors.accent) {
                 StatusLine(
                     ok = dialerHeld,
-                    okText = "Dialer role held — calls relay",
-                    badText = "Dialer role missing — calls will NOT relay",
+                    okText = "Dialer role held — precise call control",
+                    badText = "Dialer role not held — using the telephony path",
                 )
                 Spacer(Modifier.height(10.dp))
                 Text(
-                    "Android only binds a call listener to the app holding the dialer " +
-                        "role. Your usual dialer UI stays exactly as it is — this app " +
-                        "never draws a call screen on this phone.",
+                    "Optional. Calls relay either way: ringing, answering, hanging " +
+                        "up and audio all work through phone-state and " +
+                        "ANSWER_PHONE_CALLS, which need no special role. Taking the " +
+                        "role would add DTMF and hold, but would also make this app " +
+                        "the phone's in-call screen — so leaving it alone keeps this " +
+                        "handset a normal phone.",
                     color = colors.textTertiary, fontSize = 12.5.sp, lineHeight = 17.sp,
                 )
                 Spacer(Modifier.height(12.dp))
@@ -737,6 +743,9 @@ private fun requiredPermissions(): Array<String> = buildList {
     add(Manifest.permission.READ_PHONE_NUMBERS)
     add(Manifest.permission.CALL_PHONE)
     add(Manifest.permission.ANSWER_PHONE_CALLS)
+    // Without READ_CALL_LOG the PHONE_STATE broadcast omits the caller's
+    // number, and every incoming call reaches the receiver as "unknown".
+    add(Manifest.permission.READ_CALL_LOG)
     add(Manifest.permission.RECORD_AUDIO)
     add(Manifest.permission.READ_CONTACTS)
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {

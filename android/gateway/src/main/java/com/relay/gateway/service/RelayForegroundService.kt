@@ -35,6 +35,7 @@ import com.relay.core.util.SystemHealth
 import com.relay.gateway.GatewayRuntime
 import com.relay.gateway.R
 import com.relay.gateway.call.CallBridgeController
+import com.relay.gateway.call.TelephonyCallWatcher
 import com.relay.gateway.contacts.ContactsMirror
 import com.relay.gateway.sms.SmsInbox
 import com.relay.gateway.sms.SmsSender
@@ -79,6 +80,7 @@ class RelayForegroundService : Service() {
     private lateinit var smsInbox: SmsInbox
     private lateinit var contactsMirror: ContactsMirror
     private lateinit var callBridge: CallBridgeController
+    private lateinit var callWatcher: TelephonyCallWatcher
 
     /** Outbound envelopes that could not be sent while the socket was down. */
     private val pendingOutbound = ArrayDeque<Pair<String, String>>()
@@ -103,6 +105,13 @@ class RelayForegroundService : Service() {
             },
             onStateChanged = { updateNotification() },
         )
+
+        // The path that works without the dialer role. RelayInCallService is
+        // only bound when this app is the phone's in-call UI, which it
+        // deliberately is not, so without this watcher no call event ever
+        // reaches the bridge at all.
+        callWatcher = TelephonyCallWatcher(this) { CallBridgeController.current }
+        callWatcher.start()
 
         instance = this
         connect()
@@ -132,6 +141,7 @@ class RelayForegroundService : Service() {
     override fun onDestroy() {
         Log.w(TAG, "service destroyed")
         heartbeatJob?.cancel()
+        if (::callWatcher.isInitialized) callWatcher.stop()
         callBridge.shutdown()
         signaling?.disconnect()
         releaseWakeLock()

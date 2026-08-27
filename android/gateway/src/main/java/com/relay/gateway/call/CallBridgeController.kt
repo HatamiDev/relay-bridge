@@ -78,6 +78,13 @@ class CallBridgeController(
     /** Guards [announceRinging] against announcing the same call twice. */
     private var announcedRinging = false
 
+    /**
+     * True when this call is being driven by [TelephonyCallWatcher] rather than
+     * by a Telecom `Call`. Recorded so state reported to the receiver can say
+     * which path is live when something goes wrong.
+     */
+    private var telephonyDriven = false
+
     /** ICE candidates that arrive before the remote description is applied. */
     private val pendingRemoteIce = ConcurrentLinkedQueue<RtcIce>()
     private var remoteDescriptionSet = false
@@ -93,7 +100,10 @@ class CallBridgeController(
         CallState.IDLE, CallState.ENDED -> null
         CallState.RINGING -> "Incoming call — ringing on client"
         CallState.DIALING, CallState.CONNECTING -> "Connecting call…"
-        CallState.ACTIVE -> "Call bridged · ${activeStrategy?.label ?: "audio"}"
+        CallState.ACTIVE -> {
+            val path = if (telephonyDriven) "telephony" else "telecom"
+            "Call bridged · ${activeStrategy?.label ?: "audio"} · $path"
+        }
         CallState.HELD -> "Call on hold"
     }
 
@@ -165,20 +175,22 @@ class CallBridgeController(
      * announcing only from there meant that on the common path the gateway rang
      * and the receiver was never told anything at all.
      */
-    private fun announceRinging(call: Call) {
+    private fun announceRinging(call: Call) =
+        announceRinging(handleOf(call), call.details?.callerDisplayName.orEmpty())
+
+    private fun announceRinging(number: String, displayName: String) {
         if (announcedRinging) return
         announcedRinging = true
 
         state = CallState.RINGING
-        val number = handleOf(call)
         // Broadcast: nobody has answered yet, so every receiver rings.
         emit(
             Ev.CALL_INCOMING,
             json.encodeToString(
                 CallIncoming(
                     callId = callId,
-                    from = number,
-                    displayName = call.details?.callerDisplayName.orEmpty(),
+                    from = number.ifEmpty { "unknown" },
+                    displayName = displayName,
                 ),
             ),
             null,
@@ -220,6 +232,62 @@ class CallBridgeController(
     }
 
     // ─────────────────────────────────────────────────────────────────────────
+    // Telephony → relay  (the path that works without the dialer role)
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /**
+     * A cellular call is ringing, seen through [TelephonyCallWatcher].
+     *
+     * Ignored when [telecomCall] is set: that means the InCallService is bound
+     * for this call and is already driving it with better information, and two
+     * paths announcing the same call would ring the receiver twice.
+     */
+    fun onTelephonyRinging(number: String) {
+        if (telecomCall != null) return
+        if (state != CallState.IDLE && state != CallState.ENDED) return
+        if (isEmergencyNumber(number)) {
+            Log.w(TAG, "emergency call detected — bridge stands down")
+            return
+        }
+
+        callId = UUID.randomUUID().toString()
+        answeringDeviceId = ""
+        announcedRinging = false
+        remoteDescriptionSet = false
+        pendingRemoteIce.clear()
+        telephonyDriven = true
+
+        announceRinging(number, displayName = "")
+        onStateChanged()
+    }
+
+    /**
+     * The line went off-hook — someone answered, or an outgoing call connected.
+     *
+     * This is the only "call is up" signal available without the dialer role, so
+     * it is what starts the audio bridge on both the inbound and the outbound
+     * path.
+     */
+    fun onTelephonyOffhook() {
+        if (telecomCall != null) return
+        if (callId.isEmpty()) {
+            // Off-hook with no call we know about: a call dialled directly on
+            // the gateway handset. Not ours to bridge.
+            return
+        }
+        telephonyDriven = true
+        startBridge()
+        onStateChanged()
+    }
+
+    /** The line went idle — whatever was happening is over. */
+    fun onTelephonyIdle() {
+        if (telecomCall != null) return
+        if (state == CallState.IDLE) return
+        teardown("remote_hangup")
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
     // Relay → Telecom
     // ─────────────────────────────────────────────────────────────────────────
 
@@ -239,15 +307,26 @@ class CallBridgeController(
         answeringDeviceId = fromDeviceId
         notifyLosers()
 
-        val call = telecomCall ?: return
         Log.i(TAG, "answering on behalf of $fromDeviceId")
         pushState(CallState.CONNECTING)
+
+        val call = telecomCall
         runCatching {
-            @Suppress("DEPRECATION")
-            call.answer(android.telecom.VideoProfile.STATE_AUDIO_ONLY)
+            if (call != null) {
+                @Suppress("DEPRECATION")
+                call.answer(android.telecom.VideoProfile.STATE_AUDIO_ONLY)
+            } else {
+                // No Call object because the InCallService is not bound.
+                // acceptRingingCall needs only ANSWER_PHONE_CALLS, which an
+                // ordinary app can hold, and it answers whatever is ringing —
+                // which, since we only get here off a RINGING state, is this
+                // call.
+                requireAnswerPermission()
+                telecom?.acceptRingingCall() ?: error("no TelecomManager")
+            }
         }.onFailure {
             Log.e(TAG, "answer failed", it)
-            pushState(CallState.ENDED, cause = "answer_failed")
+            pushState(CallState.ENDED, cause = "answer_failed: ${it.message}")
         }
     }
 
@@ -268,15 +347,45 @@ class CallBridgeController(
     fun reject(requestedCallId: String, reason: String, fromDeviceId: String) {
         if (requestedCallId != callId) return
         if (isFromLoser(fromDeviceId)) return
-        runCatching { telecomCall?.reject(false, null) }
+        endCellularCall { telecomCall?.reject(false, null) }
         teardown(reason.ifEmpty { "rejected_by_client" })
     }
 
     fun hangup(requestedCallId: String, reason: String, fromDeviceId: String) {
         if (requestedCallId != callId) return
         if (isFromLoser(fromDeviceId)) return
-        runCatching { telecomCall?.disconnect() }
+        endCellularCall { telecomCall?.disconnect() }
         teardown(reason.ifEmpty { "client_hangup" })
+    }
+
+    /**
+     * End the call on the SIM side.
+     *
+     * Without a `Call` object the only lever is `TelecomManager.endCall()`. It
+     * is the reason hanging up from the receiver used to leave the gateway's
+     * call running: the old code called `telecomCall?.disconnect()`, and
+     * `telecomCall` was always null, so the safe-call quietly did nothing and
+     * only the receiver's own screen closed.
+     */
+    private inline fun endCellularCall(viaTelecomCall: () -> Unit) {
+        if (telecomCall != null) {
+            runCatching { viaTelecomCall() }
+            return
+        }
+        runCatching {
+            requireAnswerPermission()
+            @Suppress("DEPRECATION")
+            val ended = telecom?.endCall() ?: false
+            if (!ended) Log.w(TAG, "endCall() reported nothing to end")
+        }.onFailure { Log.e(TAG, "endCall failed", it) }
+    }
+
+    private fun requireAnswerPermission() {
+        if (context.checkSelfPermission(Manifest.permission.ANSWER_PHONE_CALLS)
+            != android.content.pm.PackageManager.PERMISSION_GRANTED
+        ) {
+            error("ANSWER_PHONE_CALLS not granted")
+        }
     }
 
     fun sendDtmf(requestedCallId: String, tone: String, fromDeviceId: String) {
@@ -328,24 +437,37 @@ class CallBridgeController(
         }
 
         val uri = Uri.fromParts("tel", destination, null)
-        runCatching {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && telecom != null) {
-                val extras = android.os.Bundle().apply {
-                    putInt(
-                        TelecomManager.EXTRA_START_CALL_WITH_VIDEO_STATE,
-                        android.telecom.VideoProfile.STATE_AUDIO_ONLY,
-                    )
-                }
-                telecom.placeCall(uri, extras)
-            } else {
+
+        // TelecomManager.placeCall first, ACTION_CALL second. placeCall is the
+        // cleaner API but some builds refuse it from an app that is not the
+        // default dialer, and this app deliberately is not; ACTION_CALL needs
+        // nothing beyond CALL_PHONE and always works. Falling through on
+        // failure rather than choosing by SDK level means neither a
+        // SecurityException nor a missing Telecom service leaves the receiver
+        // stuck on "Dialling" with no call ever placed.
+        val placed = runCatching {
+            val extras = android.os.Bundle().apply {
+                putInt(
+                    TelecomManager.EXTRA_START_CALL_WITH_VIDEO_STATE,
+                    android.telecom.VideoProfile.STATE_AUDIO_ONLY,
+                )
+            }
+            telecom?.placeCall(uri, extras) ?: error("no TelecomManager")
+            true
+        }.getOrElse {
+            Log.w(TAG, "placeCall via Telecom failed, falling back to ACTION_CALL", it)
+            runCatching {
                 context.startActivity(
                     Intent(Intent.ACTION_CALL, uri).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
                 )
+                true
+            }.getOrElse { fallback ->
+                Log.e(TAG, "placeCall failed", fallback)
+                false
             }
-        }.onFailure {
-            Log.e(TAG, "placeCall failed", it)
-            pushState(CallState.ENDED, cause = "place_failed")
         }
+
+        if (!placed) pushState(CallState.ENDED, cause = "place_failed")
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -498,6 +620,7 @@ class CallBridgeController(
         pendingOutgoingCallId = ""
         pendingOutgoingDeviceId = ""
         announcedRinging = false
+        telephonyDriven = false
         onStateChanged()
     }
 
@@ -544,8 +667,10 @@ class CallBridgeController(
      * emergency", which keeps the relay running rather than silently blocking
      * ordinary calls on a permission hiccup.
      */
-    private fun isEmergency(call: Call): Boolean = runCatching {
-        val number = handleOf(call)
+    private fun isEmergency(call: Call): Boolean = isEmergencyNumber(handleOf(call))
+
+    private fun isEmergencyNumber(number: String): Boolean = runCatching {
+        if (number.isEmpty()) return false
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             context.getSystemService<android.telephony.TelephonyManager>()
                 ?.isEmergencyNumber(number) == true
